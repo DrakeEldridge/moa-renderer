@@ -22,6 +22,7 @@ cleaning it up as it goes. A command-line batch mode is still available.
 - GPU path tracing with NVIDIA OptiX 9.1 (hardware ray tracing on RTX cards)
 - Global illumination (bounce light), soft shadows, next-event estimation for fast cleanup
 - Materials: diffuse, mirror, glass (with Fresnel and refraction)
+- OBJ and STL model loading (ASCII and binary STL), smooth normals, auto-fit into the scene
 - Progressive rendering (the image improves with every pass)
 - Render passes: beauty, albedo, normals
 - OptiX AI denoiser, guided by the albedo and normal passes
@@ -63,6 +64,11 @@ Double-click `live.bat` (or run `build\Release\moa.exe`).
 | Middle drag | Pan |
 | Right drag / wheel | Dolly in and out |
 | F | Reset the camera |
+
+**Load a model:** drag an `.obj` or `.stl` file onto the window, or start with
+`live.bat --model models\yourmodel.obj`. It's placed on the floor of the box and scaled to fit;
+the Model section of the panel changes its material (clay, mirror, glass), up axis (many STL files
+are Z-up), rotation and size.
 
 The panel on the right shows progress and speed, switches between the raw, denoised, albedo and
 normal views, and changes samples, bounces, exposure, background and block materials.
@@ -108,6 +114,7 @@ build.bat / run.bat      one-click build and batch test render (Windows)
 live.bat                 opens the live render window
 src/main.cpp             command-line front end (live window by default, --batch for files)
 src/LiveView.*           live render window (GLFW + Dear ImGui)
+src/MeshLoader.*         OBJ and STL loading
 src/Renderer.*           OptiX setup, scene upload, render loop, denoiser
 src/Scene.*              scene description and the built-in Cornell box
 src/ImageIO.*            PNG and PFM output

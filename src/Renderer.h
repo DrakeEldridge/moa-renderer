@@ -92,7 +92,9 @@ private:
     CudaBuffer m_hitRecords;
 
     // Scene
-    CudaBuffer m_vertices;
+    CudaBuffer m_positions;
+    CudaBuffer m_normals;
+    CudaBuffer m_indices;
     CudaBuffer m_triangleMaterial;
     CudaBuffer m_materials;
     CudaBuffer m_gas;

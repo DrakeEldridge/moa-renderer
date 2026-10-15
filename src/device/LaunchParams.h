@@ -69,8 +69,10 @@ struct LaunchParams
     Camera camera;
     QuadLight light;
 
-    // Scene geometry: non-indexed triangles, 3 vertices per triangle.
-    const float3* vertices;
+    // Scene geometry: indexed triangles with a shading normal per vertex.
+    const float3* positions;
+    const float3* normals;
+    const uint3* indices;
     const unsigned int* triangleMaterial;  // material index per triangle
     const Material* materials;
 

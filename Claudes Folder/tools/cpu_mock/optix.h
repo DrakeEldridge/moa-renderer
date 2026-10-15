@@ -10,7 +10,7 @@
 #define __forceinline__ inline
 typedef unsigned int OptixVisibilityMask;
 enum { OPTIX_RAY_FLAG_NONE=0, OPTIX_RAY_FLAG_DISABLE_ANYHIT=1u<<0, OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT=1u<<2, OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT=1u<<3 };
-struct MockState { uint3 launchIdx; unsigned int* payload; unsigned prim; float tmax; float3 o, d; };
+struct MockState { uint3 launchIdx; unsigned int* payload; unsigned prim; float tmax; float3 o, d; float2 bary; };
 extern thread_local MockState g_mock;
 inline uint3 optixGetLaunchIndex(){ return g_mock.launchIdx; }
 inline unsigned int optixGetPayload_0(){ return g_mock.payload[0]; }
@@ -18,6 +18,7 @@ inline unsigned int optixGetPayload_1(){ return g_mock.payload[1]; }
 inline void optixSetPayload_0(unsigned v){ g_mock.payload[0]=v; }
 inline unsigned int optixGetPrimitiveIndex(){ return g_mock.prim; }
 inline float optixGetRayTmax(){ return g_mock.tmax; }
+inline float2 optixGetTriangleBarycentrics(){ return g_mock.bary; }
 inline float3 optixGetWorldRayOrigin(){ return g_mock.o; }
 inline float3 optixGetWorldRayDirection(){ return g_mock.d; }
 // Implemented in the test harness after pathtracer.cu is included.

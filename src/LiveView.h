@@ -15,6 +15,7 @@ struct LiveOptions
     CornellOptions scene;    // starting materials for the test scene
     float exposure = 1.0f;
     std::string outPrefix = "renders/live";  // where "Save images" writes
+    std::string modelPath;                   // optional .obj/.stl to load at start
 };
 
 // Opens the window and runs until it is closed. Returns the process exit code.

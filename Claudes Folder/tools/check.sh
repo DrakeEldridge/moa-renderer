@@ -3,7 +3,8 @@
 # Also needs: apt-get install libgl-dev libglfw3-dev (for the live window code)
 # Needs: pip install --break-system-packages "nvidia-cuda-runtime-cu12==12.9.*" \
 #        "nvidia-cuda-nvcc-cu12==12.9.*" "nvidia-cuda-nvrtc-cu12==12.9.*" pillow
-# Usage: "Claudes Folder/tools/check.sh" [tall] [short] [launches] [background]
+# Usage: "Claudes Folder/tools/check.sh" [tall] [short] [launches] [background] [model.obj|.stl] [zup]
+#        (with a model, the tall-block material is used for the model)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TOOLS="$ROOT/Claudes Folder/tools"
@@ -39,6 +40,6 @@ echo "   sizeof(LaunchParams) on host: $("$OUT/sz") (must match the PTX value ab
 echo "== CPU mock render"
 g++ -std=c++17 -O2 -pthread -w -I"$TOOLS/cpu_mock" -I"$CUDA_PIP/cuda_runtime/include" -I"$CUDA_PIP/cuda_nvcc/include" \
     -I"$ROOT/src" -I"$ROOT/src/device" -I"$ROOT/third_party" \
-    "$TOOLS/cpu_mock/cpu_pt.cpp" "$ROOT/src/Scene.cpp" "$ROOT/src/ImageIO.cpp" -o "$OUT/cpu_pt"
-(cd "$OUT" && ./cpu_pt "${1:-diffuse}" "${2:-diffuse}" "${3:-16}" "${4:-0}")
+    "$TOOLS/cpu_mock/cpu_pt.cpp" "$ROOT/src/Scene.cpp" "$ROOT/src/ImageIO.cpp" "$ROOT/src/MeshLoader.cpp" -o "$OUT/cpu_pt"
+(cd "$OUT" && ./cpu_pt "${1:-diffuse}" "${2:-diffuse}" "${3:-16}" "${4:-0}" ${5:+"$5"} ${6:+"$6"})
 echo "   images written to $OUT/cpu_*.png"

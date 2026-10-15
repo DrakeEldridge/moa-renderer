@@ -6,6 +6,9 @@
 
 #include "device/vec_math.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace moa {
 
 namespace {
@@ -51,17 +54,66 @@ Material ofType(MaterialType type)
 
 void Scene::addQuad(float3 a, float3 b, float3 c, float3 d, unsigned int material, float3 facing)
 {
-    const float3 n = cross(b - a, c - a);
-    if (dot(n, facing) >= 0.0f)
+    float3 n = normalize(cross(b - a, c - a));
+    const bool flip = dot(n, facing) < 0.0f;
+    if (flip)
+        n = -n;
+    // Flat surface: four vertices of its own, all with the face normal.
+    const unsigned int base = static_cast<unsigned int>(positions.size());
+    positions.insert(positions.end(), {a, b, c, d});
+    normals.insert(normals.end(), {n, n, n, n});
+    if (!flip)
     {
-        vertices.insert(vertices.end(), {a, b, c, a, c, d});
+        indices.push_back(make_uint3(base, base + 1, base + 2));
+        indices.push_back(make_uint3(base, base + 2, base + 3));
     }
     else
     {
-        vertices.insert(vertices.end(), {a, c, b, a, d, c});
+        indices.push_back(make_uint3(base, base + 2, base + 1));
+        indices.push_back(make_uint3(base, base + 3, base + 2));
     }
     triangleMaterial.push_back(material);
     triangleMaterial.push_back(material);
+}
+
+void Scene::addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorCenter, float fitSize, bool zUp,
+                          float yawDegrees)
+{
+    if (mesh.positions.empty() || mesh.indices.empty())
+        return;
+    const float yaw = yawDegrees * kPi / 180.0f;
+    const float cy = std::cos(yaw), sy = std::sin(yaw);
+    // Re-orient into this scene's Y-up space, then spin around the vertical axis.
+    auto orient = [&](float3 v) {
+        if (zUp)
+            v = make_float3(v.x, v.z, -v.y);
+        return make_float3(cy * v.x + sy * v.z, v.y, -sy * v.x + cy * v.z);
+    };
+
+    float3 lo = orient(mesh.positions[0]), hi = lo;
+    for (const float3& p : mesh.positions)
+    {
+        const float3 v = orient(p);
+        lo = make_float3(std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z));
+        hi = make_float3(std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z));
+    }
+    const float3 size = hi - lo;
+    // Fit the height to fitSize, but keep wide models inside the box too.
+    const float scale = std::min(fitSize / std::max(size.y, 1e-6f), (fitSize * 1.15f) / std::max({size.x, size.z, 1e-6f}));
+    const float3 pivot = make_float3((lo.x + hi.x) * 0.5f, lo.y, (lo.z + hi.z) * 0.5f);
+
+    const unsigned int base = static_cast<unsigned int>(positions.size());
+    positions.reserve(positions.size() + mesh.positions.size());
+    normals.reserve(normals.size() + mesh.normals.size());
+    for (size_t i = 0; i < mesh.positions.size(); ++i)
+    {
+        positions.push_back(floorCenter + (orient(mesh.positions[i]) - pivot) * scale);
+        normals.push_back(normalize(orient(mesh.normals[i])));  // uniform scale keeps normals valid
+    }
+    indices.reserve(indices.size() + mesh.indices.size());
+    for (const uint3& t : mesh.indices)
+        indices.push_back(make_uint3(base + t.x, base + t.y, base + t.z));
+    triangleMaterial.insert(triangleMaterial.end(), mesh.indices.size(), material);
 }
 
 void Scene::addBlock(const float3 base[4], float height, unsigned int material)
@@ -125,10 +177,22 @@ Scene makeCornellBox(const CornellOptions& options)
     // The two blocks.
     const float3 shortBase[4] = {P(130.0f, 0.0f, 65.0f), P(82.0f, 0.0f, 225.0f), P(240.0f, 0.0f, 272.0f),
                                  P(290.0f, 0.0f, 114.0f)};
-    s.addBlock(shortBase, 165.0f * kScale, shrt);
+    if (!options.model || options.showBlocks)
+        s.addBlock(shortBase, 165.0f * kScale, shrt);
     const float3 tallBase[4] = {P(423.0f, 0.0f, 247.0f), P(265.0f, 0.0f, 296.0f), P(314.0f, 0.0f, 456.0f),
                                 P(472.0f, 0.0f, 406.0f)};
-    s.addBlock(tallBase, 330.0f * kScale, tall);
+    if (!options.model || options.showBlocks)
+        s.addBlock(tallBase, 330.0f * kScale, tall);
+
+    if (options.model)
+    {
+        Material m = ofType(options.modelMaterial);
+        if (options.modelMaterial == MAT_DIFFUSE)
+            m.albedo = make_float3(0.8f, 0.8f, 0.8f);  // light clay
+        const unsigned int modelId = s.addMaterial(m);
+        s.addFittedMesh(*options.model, modelId, P(278.0f, 0.0f, 279.6f), options.modelSize, options.modelZUp,
+                        options.modelYaw);
+    }
 
     s.camera.eye = P(278.0f, 273.0f, -800.0f);
     s.camera.lookAt = P(278.0f, 273.0f, 0.0f);

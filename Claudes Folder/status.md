@@ -33,7 +33,15 @@ Follow-ups for the live window:
   CPU encode scales with pixel count).
 - CUDA-GL interop instead of host copy if display becomes a bottleneck.
 
-Next milestone: OBJ loading. Test models are in Drake's `models\` folder (git-ignored):
+**Milestone 3 (OBJ/STL loading): written and CPU-tested, not yet tested on Drake's PC.**
+Indexed geometry with per-vertex shading normals; OBJ (polygons fan-triangulated, v//vn pairs,
+negative indices, missing normals computed) and STL (binary + ASCII, vertices welded by exact
+position, so seams with tiny float differences stay split). Model auto-fits onto the box floor
+(height = Size, wide models limited to 1.15 x Size), blocks hidden unless "Show blocks". Live panel:
+material, up axis, rotate/size (applied on slider release), remove; drag and drop onto the window.
+CLI: --model, --model-material, --zup, --rotate, --blocks. Textures (vt + .mtl) not yet.
+
+Test models are in Drake's `models\` folder (git-ignored):
 - `uffizi-torso-5.obj` (93 MB, high-poly, no textures): first clay/mirror/glass test.
 - `MCh_S_12_Rzezba_Popiersie_Rozy_Loewenfeld.OBJ` (3.8 MB, uppercase .OBJ extension) with
   `..._Loewenfeld.jpg` and `..._Loewenfeld_.png` (16 MB / 7.7 MB): texture step. Check which is colour

@@ -49,3 +49,7 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/LiveView.cpp
 2026-10-16 | FEATURE  | Resolution dropdown (window full/half/quarter, HD..4K, square, portrait, custom), replacing the render-scale slider
                       → src/LiveView.cpp
+2026-10-16 | FEATURE  | Milestone 3: OBJ/STL loading, indexed geometry + smooth shading normals (barycentric interpolation), auto-fit into box, drag-and-drop, model panel, CLI flags
+                      → src/MeshLoader.*, src/Scene.* (addFittedMesh, indexed addQuad), src/device/pathtracer.cu (ng vs shading n), src/Renderer.cpp (index buffer), src/LiveView.cpp, src/main.cpp
+2026-10-16 | BUILD    | CPU mock updated for indices + barycentrics; check.sh takes an optional model path; loader tested on generated OBJ (quads/no normals, v//vn) and STL (binary/ascii, Z-up)
+                      → Claudes Folder/tools/

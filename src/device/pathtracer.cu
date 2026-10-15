@@ -28,7 +28,8 @@ constexpr float kRayTMax = 1e16f;
 struct HitInfo
 {
     float3 position;
-    float3 normal;  // geometric normal, as wound in the mesh (not yet flipped to face the ray)
+    float3 normal;         // geometric normal, as wound in the mesh (not yet flipped to face the ray)
+    float3 shadingNormal;  // smooth interpolated normal, on the same side as `normal`
     unsigned int materialId;
     unsigned int hit;
 };
@@ -172,7 +173,10 @@ extern "C" __global__ void __raygen__render()
 
             const Material m = params.materials[hit.materialId];
             const bool frontFace = dot(direction, hit.normal) < 0.0f;
-            const float3 n = frontFace ? hit.normal : -hit.normal;  // normal facing the incoming ray
+            // ng: true surface side (used to offset new rays so they don't re-hit the surface).
+            // n: smooth shading normal on the same side, used for lighting and reflection.
+            const float3 ng = frontFace ? hit.normal : -hit.normal;
+            const float3 n = frontFace ? hit.shadingNormal : -hit.shadingNormal;
 
             if (depth == 0)
             {
@@ -203,7 +207,7 @@ extern "C" __global__ void __raygen__render()
                 const float cosLight = -dot(light.normal, l);
                 if (cosSurface > 0.0f && cosLight > 0.0f)
                 {
-                    const float3 shadowOrigin = hit.position + n * kRayEpsilon;
+                    const float3 shadowOrigin = hit.position + ng * kRayEpsilon;
                     if (traceShadow(shadowOrigin, l, dist - 2.0f * kRayEpsilon))
                     {
                         // BSDF (albedo/pi) * Le * geometry term / pdf(area), with pdf = 1/area.
@@ -215,7 +219,7 @@ extern "C" __global__ void __raygen__render()
                 // Continue the path with a cosine-weighted bounce. The cosine and pi cancel
                 // against the pdf, leaving just the albedo.
                 direction = sampleCosineHemisphere(n, rnd(seed), rnd(seed));
-                origin = hit.position + n * kRayEpsilon;
+                origin = hit.position + ng * kRayEpsilon;
                 throughput *= m.albedo;
                 countEmission = false;  // direct light was already counted by NEE
                 afterDiffuse = true;
@@ -223,7 +227,7 @@ extern "C" __global__ void __raygen__render()
             else if (m.type == MAT_MIRROR)
             {
                 direction = reflect(direction, n);
-                origin = hit.position + n * kRayEpsilon;
+                origin = hit.position + ng * kRayEpsilon;
                 throughput *= m.albedo;
                 countEmission = true;
             }
@@ -235,12 +239,12 @@ extern "C" __global__ void __raygen__render()
                 if (rnd(seed) < reflectance)
                 {
                     direction = reflect(direction, n);
-                    origin = hit.position + n * kRayEpsilon;
+                    origin = hit.position + ng * kRayEpsilon;
                 }
                 else
                 {
                     direction = refractDir(direction, n, eta, cosI);
-                    origin = hit.position - n * kRayEpsilon;
+                    origin = hit.position - ng * kRayEpsilon;
                 }
                 throughput *= m.albedo;
                 countEmission = true;
@@ -295,13 +299,23 @@ extern "C" __global__ void __closesthit__radiance()
 {
     HitInfo* hit = getHitInfo();
     const unsigned int prim = optixGetPrimitiveIndex();
-    const float3 v0 = params.vertices[3 * prim + 0];
-    const float3 v1 = params.vertices[3 * prim + 1];
-    const float3 v2 = params.vertices[3 * prim + 2];
+    const uint3 tri = params.indices[prim];
+    const float3 v0 = params.positions[tri.x];
+    const float3 v1 = params.positions[tri.y];
+    const float3 v2 = params.positions[tri.z];
 
     const float t = optixGetRayTmax();
     hit->position = optixGetWorldRayOrigin() + optixGetWorldRayDirection() * t;
-    hit->normal = normalize(cross(v1 - v0, v2 - v0));
+    const float3 ng = normalize(cross(v1 - v0, v2 - v0));
+    hit->normal = ng;
+
+    // Interpolate the vertex normals with the hit's barycentric coordinates.
+    const float2 bary = optixGetTriangleBarycentrics();
+    float3 ns = params.normals[tri.x] * (1.0f - bary.x - bary.y) + params.normals[tri.y] * bary.x +
+                params.normals[tri.z] * bary.y;
+    const float len = length(ns);
+    ns = len > 0.0f ? ns / len : ng;
+    hit->shadingNormal = dot(ns, ng) < 0.0f ? -ns : ns;  // keep it on the geometric side
     hit->materialId = params.triangleMaterial[prim];
     hit->hit = 1u;
 }

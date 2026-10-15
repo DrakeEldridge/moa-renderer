@@ -223,10 +223,13 @@ void Renderer::createShaderBindingTable()
 
 void Renderer::setScene(const Scene& scene)
 {
-    if (scene.triangleCount() == 0 || scene.vertices.size() != scene.triangleCount() * 3)
+    if (scene.triangleCount() == 0 || scene.indices.size() != scene.triangleCount() ||
+        scene.normals.size() != scene.positions.size())
         throw std::runtime_error("Scene has no triangles or inconsistent geometry");
 
-    m_vertices.upload(scene.vertices);
+    m_positions.upload(scene.positions);
+    m_normals.upload(scene.normals);
+    m_indices.upload(scene.indices);
     m_triangleMaterial.upload(scene.triangleMaterial);
     m_materials.upload(scene.materials);
     m_cameraDesc = scene.camera;
@@ -236,15 +239,19 @@ void Renderer::setScene(const Scene& scene)
 
 void Renderer::buildAccel(const Scene& scene)
 {
-    const CUdeviceptr vertexBuffer = m_vertices.dptr();
+    const CUdeviceptr vertexBuffer = m_positions.dptr();
     const unsigned int geometryFlags[1] = {OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT};
 
     OptixBuildInput input = {};
     input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
     input.triangleArray.vertexStrideInBytes = sizeof(float3);
-    input.triangleArray.numVertices = static_cast<unsigned int>(scene.vertices.size());
+    input.triangleArray.numVertices = static_cast<unsigned int>(scene.positions.size());
     input.triangleArray.vertexBuffers = &vertexBuffer;
+    input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+    input.triangleArray.indexStrideInBytes = sizeof(uint3);
+    input.triangleArray.numIndexTriplets = static_cast<unsigned int>(scene.indices.size());
+    input.triangleArray.indexBuffer = m_indices.dptr();
     input.triangleArray.flags = geometryFlags;
     input.triangleArray.numSbtRecords = 1;
 
@@ -299,7 +306,9 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.normal = m_normal.as<float4>();
     lp.camera = m_camera;
     lp.light = m_light;
-    lp.vertices = m_vertices.as<const float3>();
+    lp.positions = m_positions.as<const float3>();
+    lp.normals = m_normals.as<const float3>();
+    lp.indices = m_indices.as<const uint3>();
     lp.triangleMaterial = m_triangleMaterial.as<const unsigned int>();
     lp.materials = m_materials.as<const Material>();
     lp.handle = m_gasHandle;

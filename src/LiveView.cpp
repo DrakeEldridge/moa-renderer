@@ -8,6 +8,7 @@
 #include "LiveView.h"
 
 #include "ImageIO.h"
+#include "MeshLoader.h"
 #include "device/vec_math.h"
 
 #include <imgui.h>
@@ -97,13 +98,43 @@ struct OrbitCamera
 
 float3 sceneCenter(const Scene& scene)
 {
-    float3 lo = scene.vertices.front(), hi = scene.vertices.front();
-    for (const float3& v : scene.vertices)
+    float3 lo = scene.positions.front(), hi = scene.positions.front();
+    for (const float3& v : scene.positions)
     {
         lo = make_float3(std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z));
         hi = make_float3(std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z));
     }
     return (lo + hi) * 0.5f;
+}
+
+// Files dropped onto the window, collected by the GLFW callback and handled in the main loop.
+std::vector<std::string> g_droppedFiles;
+
+void onDrop(GLFWwindow*, int count, const char** paths)
+{
+    for (int i = 0; i < count; ++i)
+        g_droppedFiles.emplace_back(paths[i]);
+}
+
+// Loads a model and reports how long it took. Returns false (with a message) on failure.
+bool loadModel(const std::string& path, Mesh& mesh, std::string& status)
+{
+    std::printf("Loading %s ...\n", path.c_str());
+    const auto t0 = Clock::now();
+    std::string error;
+    if (!loadMesh(path, mesh, error))
+    {
+        status = "Couldn't load model: " + error;
+        std::fprintf(stderr, "%s\n", status.c_str());
+        return false;
+    }
+    const double ms = msBetween(t0, Clock::now());
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "%s: %zu triangles, loaded in %.1f s", mesh.name.c_str(), mesh.triangleCount(),
+                  ms / 1000.0);
+    status = buf;
+    std::printf("%s\n", buf);
+    return true;
 }
 
 // Owns GLFW + ImGui setup so everything is cleaned up even if rendering throws.
@@ -141,6 +172,7 @@ struct WindowContext
         }
         glfwMakeContextCurrent(window);
         glfwSwapInterval(1);
+        glfwSetDropCallback(window, onDrop);
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -226,6 +258,14 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
     int maxDepth = static_cast<int>(settings.maxDepth);
     int tallMaterial = static_cast<int>(sceneOptions.tallBlock);
     int shortMaterial = static_cast<int>(sceneOptions.shortBlock);
+
+    Mesh model;
+    std::string modelStatus = "Drag an .obj or .stl file onto the window to load it.";
+    int modelMaterial = static_cast<int>(sceneOptions.modelMaterial);
+    int modelUp = sceneOptions.modelZUp ? 1 : 0;
+    sceneOptions.model = nullptr;
+    if (!options.modelPath.empty() && loadModel(options.modelPath, model, modelStatus))
+        sceneOptions.model = &model;
 
     Scene scene = makeCornellBox(sceneOptions);
     renderer.setScene(scene);
@@ -429,6 +469,58 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             sceneOptions.shortBlock = static_cast<MaterialType>(shortMaterial);
             scene = makeCornellBox(sceneOptions);
             renderer.setScene(scene);  // resets the renderer's camera; ours is reapplied on restart
+            restart = true;
+        }
+
+        ImGui::SeparatorText("Model");
+        bool rebuildScene = false;
+        if (!g_droppedFiles.empty())
+        {
+            const std::string path = g_droppedFiles.back();
+            g_droppedFiles.clear();
+            Mesh loaded;
+            if (loadModel(path, loaded, modelStatus))
+            {
+                model = std::move(loaded);
+                sceneOptions.model = &model;
+                rebuildScene = true;
+            }
+        }
+        ImGui::TextWrapped("%s", modelStatus.c_str());
+        if (sceneOptions.model)
+        {
+            const char* const upNames[] = {"Y up", "Z up"};
+            if (ImGui::Combo("Material", &modelMaterial, kMaterialNames, IM_ARRAYSIZE(kMaterialNames)))
+            {
+                sceneOptions.modelMaterial = static_cast<MaterialType>(modelMaterial);
+                rebuildScene = true;
+            }
+            if (ImGui::Combo("Up axis", &modelUp, upNames, IM_ARRAYSIZE(upNames)))
+            {
+                sceneOptions.modelZUp = modelUp == 1;
+                rebuildScene = true;
+            }
+            // Big meshes take a moment to rebuild, so apply these when the slider is released.
+            ImGui::SliderFloat("Rotate", &sceneOptions.modelYaw, -180.0f, 180.0f, "%.0f deg");
+            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
+            ImGui::SliderFloat("Size", &sceneOptions.modelSize, 0.5f, 5.0f, "%.2f");
+            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
+            if (ImGui::Checkbox("Show blocks", &sceneOptions.showBlocks))
+                rebuildScene = true;
+            if (ImGui::Button("Remove model"))
+            {
+                sceneOptions.model = nullptr;
+                model = Mesh{};
+                modelStatus = "Drag an .obj or .stl file onto the window to load it.";
+                rebuildScene = true;
+            }
+        }
+        if (rebuildScene)
+        {
+            const auto t0 = Clock::now();
+            scene = makeCornellBox(sceneOptions);
+            renderer.setScene(scene);
+            std::printf("Scene rebuilt (%zu triangles) in %.0f ms\n", scene.triangleCount(), msBetween(t0, Clock::now()));
             restart = true;
         }
 

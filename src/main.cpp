@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "ImageIO.h"
 #include "LiveView.h"
+#include "MeshLoader.h"
 #include "Renderer.h"
 #include "Scene.h"
 
@@ -38,6 +39,7 @@ struct Options
     bool hdr = false;
     bool verbose = false;
     bool batch = false;  // render once and save, instead of opening the live window
+    std::string model;   // optional .obj/.stl
 };
 
 void printUsage()
@@ -54,6 +56,11 @@ void printUsage()
         "  --depth N            max bounces (default 8)\n"
         "  --tall MATERIAL      tall block: diffuse, mirror or glass (default diffuse)\n"
         "  --short MATERIAL     short block: diffuse, mirror or glass (default diffuse)\n"
+        "  --model FILE         load an .obj or .stl into the box (replaces the blocks)\n"
+        "  --model-material M   model material: diffuse, mirror or glass (default diffuse)\n"
+        "  --zup                the model file is Z-up (common for STL)\n"
+        "  --rotate DEG         turn the model around the vertical axis\n"
+        "  --blocks             keep the two blocks when a model is loaded\n"
         "  --exposure X         exposure multiplier for the PNGs (default 1.0)\n"
         "  --clamp X            caustic firefly clamp, 0 = off (default 4)\n"
         "  --background X       grey background light behind the open front of the box (default 0)\n"
@@ -100,6 +107,16 @@ bool parseArgs(int argc, char** argv, Options& o)
         else if (a == "--hdr") o.hdr = true;
         else if (a == "--verbose") o.verbose = true;
         else if (a == "--batch") o.batch = true;
+        else if (a == "--model") o.model = next();
+        else if (a == "--zup") o.scene.modelZUp = true;
+        else if (a == "--blocks") o.scene.showBlocks = true;
+        else if (a == "--rotate") o.scene.modelYaw = std::strtof(next(), nullptr);
+        else if (a == "--model-material")
+        {
+            const std::string name = next();
+            if (!moa::parseMaterialType(name, o.scene.modelMaterial))
+                throw std::runtime_error("Unknown material '" + name + "' (use diffuse, mirror or glass)");
+        }
         else if (a == "--tall" || a == "--short")
         {
             const std::string name = next();
@@ -176,10 +193,21 @@ int main(int argc, char** argv)
             live.scene = o.scene;
             live.exposure = o.exposure;
             live.outPrefix = o.out == "renders/cornell" ? "renders/live" : o.out;
+            live.modelPath = o.model;
             std::printf("Opening the live render window...\n");
             return moa::runLiveView(renderer, live);
         }
 
+        moa::Mesh model;
+        if (!o.model.empty())
+        {
+            std::string error;
+            std::printf("Loading %s ...\n", o.model.c_str());
+            if (!moa::loadMesh(o.model, model, error))
+                throw std::runtime_error(error);
+            std::printf("Model: %zu triangles\n", model.triangleCount());
+            o.scene.model = &model;
+        }
         const moa::Scene scene = moa::makeCornellBox(o.scene);
         renderer.setScene(scene);
         std::printf("Scene: Cornell box, %zu triangles\n", scene.triangleCount());

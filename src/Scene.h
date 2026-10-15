@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include "MeshLoader.h"
 #include "device/LaunchParams.h"
 
 #include <string>
@@ -21,7 +22,9 @@ struct CameraDesc
 
 struct Scene
 {
-    std::vector<float3> vertices;                // 3 per triangle
+    std::vector<float3> positions;               // vertex positions
+    std::vector<float3> normals;                 // one per position (shading normals)
+    std::vector<uint3> indices;                  // three positions per triangle
     std::vector<unsigned int> triangleMaterial;  // one per triangle
     std::vector<Material> materials;
     QuadLight light{};
@@ -42,6 +45,11 @@ struct Scene
     // Adds a closed prism: `base` is a 4-corner footprint (any winding), extruded by `height` along +Y.
     // All faces are wound so their normals point outwards (needed for glass).
     void addBlock(const float3 base[4], float height, unsigned int material);
+
+    // Adds a loaded mesh, transformed so it stands on the floor at `floorCenter` and its height
+    // (or largest size, if wider than tall) equals `fitSize`. zUp: the file's up axis is +Z.
+    void addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorCenter, float fitSize, bool zUp,
+                       float yawDegrees);
 };
 
 // Options for the built-in test scene.
@@ -49,6 +57,14 @@ struct CornellOptions
 {
     MaterialType tallBlock = MAT_DIFFUSE;
     MaterialType shortBlock = MAT_DIFFUSE;
+
+    // Optional model placed in the middle of the box (replaces the blocks unless showBlocks).
+    const Mesh* model = nullptr;
+    MaterialType modelMaterial = MAT_DIFFUSE;
+    bool showBlocks = false;
+    bool modelZUp = false;     // many STL files are Z-up
+    float modelYaw = 0.0f;     // degrees around the vertical axis
+    float modelSize = 3.6f;    // fitted height in scene units (the box is 5.5 tall)
 };
 
 Scene makeCornellBox(const CornellOptions& options);

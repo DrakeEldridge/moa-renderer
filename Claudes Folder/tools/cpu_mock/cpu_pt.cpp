@@ -11,24 +11,25 @@
 #include <string>
 thread_local MockState g_mock;
 static const moa::Scene* g_scene;
-static bool hitTri(float3 o, float3 d, float3 a, float3 b, float3 c, float& t){
+static bool hitTri(float3 o, float3 d, float3 a, float3 b, float3 c, float& t, float2& bc){
   using namespace moa; float3 e1=b-a,e2=c-a,p=cross(d,e2); float det=dot(e1,p); if(fabsf(det)<1e-12f) return false;
-  float inv=1/det; float3 s=o-a; float u=dot(s,p)*inv; if(u<0||u>1) return false; float3 q=cross(s,e1); float v=dot(d,q)*inv; if(v<0||u+v>1) return false; t=dot(e2,q)*inv; return true; }
+  float inv=1/det; float3 s=o-a; float u=dot(s,p)*inv; if(u<0||u>1) return false; float3 q=cross(s,e1); float v=dot(d,q)*inv; if(v<0||u+v>1) return false; t=dot(e2,q)*inv; bc=make_float2(u,v); return true; }
 void mockTrace(OptixTraversableHandle, float3 o, float3 d, float tmin, float tmax, unsigned flags, unsigned, unsigned missIdx, unsigned* payload){
-  float best=tmax; int bi=-1; const auto& V=g_scene->vertices;
-  for(size_t i=0;i<g_scene->triangleCount();++i){ float t; if(hitTri(o,d,V[3*i],V[3*i+1],V[3*i+2],t) && t>tmin && t<best){best=t;bi=(int)i; if(flags&OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT) break;} }
+  float best=tmax; int bi=-1; float2 bb=make_float2(0,0); const auto& V=g_scene->positions; const auto& I=g_scene->indices;
+  for(size_t i=0;i<g_scene->triangleCount();++i){ float t; float2 bc; if(hitTri(o,d,V[I[i].x],V[I[i].y],V[I[i].z],t,bc) && t>tmin && t<best){best=t;bi=(int)i;bb=bc; if(flags&OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT) break;} }
   MockState saved=g_mock; g_mock.payload=payload; g_mock.o=o; g_mock.d=d;
   if(bi<0){ if(missIdx==0) __miss__radiance(); else __miss__shadow(); }
-  else if(!(flags&OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT)){ g_mock.prim=bi; g_mock.tmax=best; __closesthit__radiance(); }
+  else if(!(flags&OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT)){ g_mock.prim=bi; g_mock.tmax=best; g_mock.bary=bb; __closesthit__radiance(); }
   g_mock.payload=saved.payload; g_mock.o=saved.o; g_mock.d=saved.d; g_mock.prim=saved.prim; g_mock.tmax=saved.tmax; }
 int main(int argc, char** argv){
   using namespace moa; CornellOptions opt; const float bg = argc>4 ? (float)atof(argv[4]) : 0.0f; if(argc>2){ parseMaterialType(argv[1],opt.tallBlock); parseMaterialType(argv[2],opt.shortBlock);} 
+  Mesh model; if(argc>5){ std::string err; if(!loadMesh(argv[5],model,err)){std::printf("%s\n",err.c_str()); return 1;} opt.model=&model; opt.modelMaterial=opt.tallBlock; if(argc>6) opt.modelZUp=true; std::printf("model tris %zu\n", model.triangleCount()); }
   Scene s=makeCornellBox(opt); g_scene=&s; const unsigned W=160,H=160, spl=8, launches=argc>3?atoi(argv[3]):8;
   std::vector<float4> beauty(W*H), albedo(W*H), normal(W*H);
   float aspect=1, th=tanf(0.5f*s.camera.verticalFovDegrees*kPi/180); float3 w=normalize(s.camera.lookAt-s.camera.eye), r=normalize(cross(w,s.camera.up)), up=normalize(cross(r,w));
   params.width=W; params.height=H; params.samplesPerLaunch=spl; params.maxDepth=8; params.maxSampleValue=4.0f; params.background=make_float3(bg,bg,bg); params.beauty=beauty.data(); params.albedo=albedo.data(); params.normal=normal.data();
   params.camera.eye=s.camera.eye; params.camera.w=w; params.camera.u=r*(th*aspect); params.camera.v=up*th; params.light=s.light;
-  params.vertices=s.vertices.data(); params.triangleMaterial=s.triangleMaterial.data(); params.materials=s.materials.data();
+  params.positions=s.positions.data(); params.normals=s.normals.data(); params.indices=s.indices.data(); params.triangleMaterial=s.triangleMaterial.data(); params.materials=s.materials.data();
   for(unsigned f=0; f<launches; ++f){ params.subframeIndex=f; std::vector<std::thread> th;
     for(unsigned t=0;t<16;t++) th.emplace_back([&,t]{ for(unsigned y=t;y<H;y+=16) for(unsigned x=0;x<W;x++){ g_mock.launchIdx=make_uint3(x,y,0); __raygen__render(); } });
     for(auto& x:th) x.join(); }
