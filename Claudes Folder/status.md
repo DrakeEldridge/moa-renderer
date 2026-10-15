@@ -19,11 +19,27 @@ cleanly, and the CPU mock renders correct images (diffuse, mirror and glass vari
 
 ## Next steps
 
-1. Milestone 2 candidates (ask Drake which first):
-   - Interactive window: watch the progressive render live, orbit the camera (the Redshift RenderView feel).
-   - Scene loading: OBJ first (quick win), then USD / Alembic via vcpkg (start of Phase 2).
-   - EXR output (OpenEXR via vcpkg), plus more AOVs.
-2. Smooth normals and textures once real meshes load.
+**Milestone 2: live render window (Drake chose this on 2026-10-16).** Goal: the Redshift
+RenderView feel. Open a window, watch the image clean up progressively, move the camera and see
+it restart instantly.
+
+Plan:
+1. Window + display: GLFW and Dear ImGui fetched with CMake FetchContent from GitHub (no vcpkg yet).
+   OpenGL texture blit of the beauty buffer (start with a host copy and glTexSubImage2D; CUDA-GL
+   interop later if needed).
+2. Render loop: one OptiX launch per frame (small spl), accumulate, display every frame. Reset
+   accumulation on any change. Denoise the displayed frame every N frames or once the camera stops.
+3. Camera: Houdini-style controls (Alt or Space + LMB tumble, MMB pan, RMB / wheel dolly). Also
+   accept Maya-style Alt combos. Orbit around a pivot (default: scene centre).
+4. Fast interaction: quarter resolution while dragging, full resolution when still (later: AI 2x upscale).
+5. ImGui panel (Redshift-like): samples target, bounces, clamp, exposure, background, denoise
+   toggle, AOV switcher (beauty / denoised / albedo / normal), block material dropdowns, render
+   stats (spp, samples/s), "Save image" button.
+6. Keep batch mode: `moa.exe --batch ...` = today's command-line render (run.bat uses it).
+7. Test via computer use: Claude runs build.bat, then the window. Computer use is click-only on
+   terminals; the MOA window itself may need its own approval to drag the camera.
+
+After that: OBJ loading, then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
 ## Blockers / waiting on
 

@@ -37,3 +37,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → Claudes Folder/status.md
 2026-10-16 | SETUP    | Drake's folder linked to GitHub (git init + fetch + reset). Computer use approved (click tier) and used to run build.bat/run.bat
                       → Claudes Folder/START_HERE.md
+2026-10-16 | DECISION | Milestone 2 = live render window (GLFW + ImGui via FetchContent, progressive display, Houdini-style camera, batch mode kept). Plan in status.md
+                      → Claudes Folder/status.md
