@@ -1,0 +1,16 @@
+# Build output
+/build/
+/out/
+/renders/
+
+# IDE / OS files
+.vs/
+.vscode/
+.idea/
+*.user
+Thumbs.db
+Desktop.ini
+
+# Local convenience shortcuts
+*.lnk
+Claudes Folder/ClaudeMemoryWorkflow.txt
