@@ -29,3 +29,11 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → README.md, docs/images/
 2026-10-16 | SETUP    | Claude GitHub App installed; first commit pushed to DrakeEldridge/moa-renderer main
                       → Claudes Folder/status.md
+2026-10-16 | BUILD    | First Windows build OK (VS 2022 17.14, CUDA 13.4, CMake 4.4.4); first GPU render on RTX 3080: 1.74 s for 1024² @ 256 spp, denoise 41.6 ms
+                      → logs/2026-10-16_session-01.md
+2026-10-16 | FIX      | MSVC C4245 warning: cast OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE to unsigned int
+                      → src/Renderer.cpp
+2026-10-16 | BUG      | File-bridge copies of JPGs came out different from git's copies; fixed with `git restore docs/images`. Deliver via git only from now on
+                      → Claudes Folder/status.md
+2026-10-16 | SETUP    | Drake's folder linked to GitHub (git init + fetch + reset). Computer use approved (click tier) and used to run build.bat/run.bat
+                      → Claudes Folder/START_HERE.md

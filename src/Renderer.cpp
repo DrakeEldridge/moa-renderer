@@ -131,7 +131,7 @@ void Renderer::createModule(const std::string& ptxPath)
     m_pipelineOptions.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     m_pipelineOptions.pipelineLaunchParamsVariableName = "params";
     m_pipelineOptions.pipelineLaunchParamsSizeInBytes = sizeof(LaunchParams);
-    m_pipelineOptions.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
+    m_pipelineOptions.usesPrimitiveTypeFlags = static_cast<unsigned int>(OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE);
 
     char log[4096];
     size_t logSize = sizeof(log);

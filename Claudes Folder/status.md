@@ -7,7 +7,11 @@ _Last updated: 2026-10-16 (session 01)_
 GitHub: first commit pushed to `main` on 2026-10-16 (Claude GitHub App installed).
 
 
-**Phase 1, milestone 1: written, not yet built on Drake's PC.**
+**Phase 1, milestone 1: DONE and verified on Drake's RTX 3080 (2026-10-16).**
+
+First build succeeded with no errors (one harmless MSVC warning, since fixed). Render result:
+1024x1024, 256 spp, 8 bounces in **1.74 s** (about 155 million samples/s); OptiX denoise **41.6 ms**.
+The GPU image matches the CPU mock exactly.
 
 The command-line renderer `moa.exe` path-traces a built-in Cornell box with OptiX 9.1 and writes
 beauty, denoised, albedo and normal PNGs. In the cloud workspace, device and host code compile
@@ -15,17 +19,17 @@ cleanly, and the CPU mock renders correct images (diffuse, mirror and glass vari
 
 ## Next steps
 
-1. **Drake:** install CMake 4.x (cmake.org, tick "Add to PATH") if not done yet.
-2. **Drake:** run `build.bat`, then `run.bat`. Send back the console output and `renders\cornell_denoised.png`.
-3. **Claude:** fix any Windows/MSVC build errors (first real build, so expect a few).
-4. Milestone 2: EXR output (OpenEXR via vcpkg), interactive window (progressive view while
-   rendering), then load a USD scene (start of Phase 2 groundwork).
+1. Milestone 2 candidates (ask Drake which first):
+   - Interactive window: watch the progressive render live, orbit the camera (the Redshift RenderView feel).
+   - Scene loading: OBJ first (quick win), then USD / Alembic via vcpkg (start of Phase 2).
+   - EXR output (OpenEXR via vcpkg), plus more AOVs.
+2. Smooth normals and textures once real meshes load.
 
 ## Blockers / waiting on
 
-- Drake's local folder holds the same files but isn't a git repo yet. Steps sent 2026-10-16:
-  `git init -b main`, `git remote add origin ...`, `git fetch origin`, `git reset origin/main`,
-  `git branch -u origin/main`. Confirm `git status` is clean next session.
+- None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to
+  GitHub and having him run `git pull`. **Don't copy files into his folder through the file bridge
+  any more** (it makes git see local changes, and it altered JPGs once).
 
 ## Known limitations (by design for milestone 1)
 

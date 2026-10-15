@@ -43,8 +43,11 @@ Index tags: `FEATURE`, `FIX`, `BUG`, `DECISION`, `FAILED`, `BUILD`, `DOCS`, `SET
 - Host code is compile-checked here with g++ against the CUDA and OptiX headers.
 - `tools/cpu_mock/` runs the real `pathtracer.cu` on the CPU through a fake OptiX API, so
   changes to the path tracer can be checked visually before Drake builds them.
-- Without device_bash on Drake's PC, files are delivered to his folder through the file bridge,
-  and pushed to GitHub once the Claude GitHub App has access to the repo.
+- Code reaches Drake through GitHub: Claude pushes, Drake runs `git pull` in the project folder.
+- Computer use works on Drake's PC (approved 2026-10-16) for File Explorer, Command Prompt and
+  Terminal at "click" tier: Claude can double-click `build.bat` / `run.bat` and read the console,
+  but can't type. Read render outputs with the file bridge (device_stage_files) rather than screenshots.
+  Never click inside a running console window: Windows "Select" mode pauses it.
 
 ## Big decisions so far (details in the design doc)
 
