@@ -186,6 +186,28 @@ enum ViewMode : int { VIEW_BEAUTY = 0, VIEW_DENOISED, VIEW_ALBEDO, VIEW_NORMAL }
 const char* const kViewNames[] = {"Beauty (raw)", "Denoised", "Albedo", "Normal"};
 const char* const kMaterialNames[] = {"Diffuse", "Mirror", "Glass"};
 
+struct ResolutionPreset
+{
+    const char* name;
+    float windowScale;  // > 0: fraction of the window size
+    int width;          // fixed size when windowScale == 0; -1 = custom
+    int height;
+};
+const ResolutionPreset kResolutions[] = {
+    {"Window (full)", 1.0f, 0, 0},
+    {"Window 1/2", 0.5f, 0, 0},
+    {"Window 1/4", 0.25f, 0, 0},
+    {"1280 x 720 (HD)", 0.0f, 1280, 720},
+    {"1920 x 1080 (Full HD)", 0.0f, 1920, 1080},
+    {"2560 x 1440 (QHD)", 0.0f, 2560, 1440},
+    {"3840 x 2160 (4K UHD)", 0.0f, 3840, 2160},
+    {"1080 x 1080 (square)", 0.0f, 1080, 1080},
+    {"2048 x 2048 (square)", 0.0f, 2048, 2048},
+    {"1080 x 1920 (portrait)", 0.0f, 1080, 1920},
+    {"Custom", 0.0f, -1, -1},
+};
+constexpr int kResolutionCount = static_cast<int>(sizeof(kResolutions) / sizeof(kResolutions[0]));
+
 }  // namespace
 
 int runLiveView(Renderer& renderer, const LiveOptions& options)
@@ -223,11 +245,13 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
     double samplesTotal = 0.0;
     int dragButton = -1;
     std::string saveMessage;
-    // Render resolution relative to the window. Starts so big-screen windows render about as
-    // many pixels as a 1080p one; halved again while the camera moves (Redshift-style).
-    float renderScale = clampf(1.0f / ctx.uiScale, 0.25f, 1.0f);
+    // Render resolution: a fraction of the window or a fixed size. Big screens start at half the
+    // window so they render about as many pixels as 1080p. Halved again while the camera moves.
     bool lowResWhileMoving = true;
     bool wasMoving = false;
+    int resolutionPreset = ctx.uiScale >= 1.5f ? 1 : 0;  // index into kResolutions
+    int customWidth = 1920;
+    int customHeight = 1080;
 
     std::vector<float4> pixels;
     std::vector<uint8_t> rgba;
@@ -287,9 +311,45 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         // Treat the camera as "moving" for the whole drag, so resolution doesn't flicker
         // between frames where the mouse happens not to move.
         const bool interacting = moving || dragButton >= 0;
-        const float scale = renderScale * ((lowResWhileMoving && interacting) ? 0.5f : 1.0f);
-        const unsigned int renderW = std::max(32u, static_cast<unsigned int>(viewW * io.DisplayFramebufferScale.x * scale));
-        const unsigned int renderH = std::max(32u, static_cast<unsigned int>(viewH * io.DisplayFramebufferScale.y * scale));
+        // Full-quality render size: either the window size times the render scale, or a fixed resolution.
+        const ResolutionPreset& preset = kResolutions[resolutionPreset];
+        const bool fitsWindow = preset.windowScale > 0.0f;
+        float baseW, baseH;
+        if (fitsWindow)
+        {
+            baseW = viewW * io.DisplayFramebufferScale.x * preset.windowScale;
+            baseH = viewH * io.DisplayFramebufferScale.y * preset.windowScale;
+        }
+        else if (preset.width < 0)
+        {
+            baseW = static_cast<float>(customWidth);
+            baseH = static_cast<float>(customHeight);
+        }
+        else
+        {
+            baseW = static_cast<float>(preset.width);
+            baseH = static_cast<float>(preset.height);
+        }
+        const float moveScale = (lowResWhileMoving && interacting) ? 0.5f : 1.0f;
+        const unsigned int renderW = std::max(32u, static_cast<unsigned int>(baseW * moveScale));
+        const unsigned int renderH = std::max(32u, static_cast<unsigned int>(baseH * moveScale));
+
+        // Window-based sizes fill the view; fixed sizes keep their aspect ratio (letterboxed).
+        float dispX = 0.0f, dispY = 0.0f, dispW = viewW, dispH = viewH;
+        if (!fitsWindow)
+        {
+            const float imageAspect = baseW / baseH;
+            if (viewW / viewH > imageAspect)
+            {
+                dispW = viewH * imageAspect;
+                dispX = (viewW - dispW) * 0.5f;
+            }
+            else
+            {
+                dispH = viewW / imageAspect;
+                dispY = (viewH - dispH) * 0.5f;
+            }
+        }
         if (renderW != renderer.width() || renderH != renderer.height())
             restart = true;
         if (wasMoving && !interacting)
@@ -327,8 +387,25 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         ImGui::Checkbox("Denoise while moving", &denoiseWhileMoving);
 
         ImGui::SeparatorText("Resolution");
-        if (ImGui::SliderFloat("Render scale", &renderScale, 0.25f, 1.0f, "%.2f"))
-            restart = true;
+        if (ImGui::BeginCombo("Size", kResolutions[resolutionPreset].name))
+        {
+            for (int i = 0; i < kResolutionCount; ++i)
+                if (ImGui::Selectable(kResolutions[i].name, i == resolutionPreset))
+                {
+                    resolutionPreset = i;
+                    restart = true;
+                }
+            ImGui::EndCombo();
+        }
+        if (kResolutions[resolutionPreset].width < 0)
+        {
+            if (ImGui::InputInt("Width", &customWidth, 16, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+                restart = true;
+            if (ImGui::InputInt("Height", &customHeight, 16, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+                restart = true;
+            customWidth = std::clamp(customWidth, 32, 8192);
+            customHeight = std::clamp(customHeight, 32, 8192);
+        }
         ImGui::Checkbox("Half res while moving", &lowResWhileMoving);
 
         ImGui::SeparatorText("Sampling");
@@ -471,8 +548,9 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         }
 
         // Rows are stored bottom-up, so flip the V coordinate when drawing.
-        ImGui::GetBackgroundDrawList()->AddImage(static_cast<ImTextureID>(ctx.texture), ImVec2(0.0f, 0.0f),
-                                                 ImVec2(viewW, viewH), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+        ImGui::GetBackgroundDrawList()->AddImage(static_cast<ImTextureID>(ctx.texture), ImVec2(dispX, dispY),
+                                                 ImVec2(dispX + dispW, dispY + dispH), ImVec2(0.0f, 1.0f),
+                                                 ImVec2(1.0f, 0.0f));
 
         ImGui::Render();
         int fbW = 0, fbH = 0;

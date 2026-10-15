@@ -27,7 +27,8 @@ Drake flew the camera himself. Live speed ~147 Msamples/s, denoise ~8 ms at wind
 Follow-ups for the live window:
 - UI scale added (auto from Windows scaling or monitor height/1080, plus "UI size" slider). Not yet
   tested on Drake's PC: he needs `git pull` + build.bat.
-- Render scale slider (default 1/uiScale, so 4K windows render ~1080p-sized) + half res while
+- Resolution dropdown: Window full / 1/2 / 1/4, fixed presets (HD, Full HD, QHD, 4K, squares,
+  portrait) and Custom; fixed sizes letterboxed. Default Window 1/2 on big screens. Half res while
   dragging, added after Drake found the 2x-UI window laggy on his 4K TV. Untested on his PC yet.
   Next speedups: AI 2x upscale for the low-res frames; CUDA-GL interop (the per-frame host copy +
   CPU encode scales with pixel count).

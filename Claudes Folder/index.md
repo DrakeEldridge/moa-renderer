@@ -47,3 +47,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/LiveView.cpp
 2026-10-16 | FIX      | Live window laggy at 2x UI on 4K (≈4.7 MP render): added render scale (default 1/uiScale) + half res while dragging, full-res restart on release
                       → src/LiveView.cpp
+2026-10-16 | FEATURE  | Resolution dropdown (window full/half/quarter, HD..4K, square, portrait, custom), replacing the render-scale slider
+                      → src/LiveView.cpp
