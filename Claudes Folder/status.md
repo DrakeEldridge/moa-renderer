@@ -69,7 +69,11 @@ UI: texture names, Use textures, Flip V, Flip green, Bump strength (material-onl
 CPU mock: tex2D mock + BVH (60k-tri bust in ~12 s). The bust loads upright, facing sideways.
 No mipmaps yet (8K textures may shimmer while moving at low spp).
 
-**Milestone 5 (HDRI lighting): written and CPU-tested with a synthetic sun+sky .hdr, not yet on Drake's PC.**
+**Milestone 5 (HDRI lighting): works on Drake's PC** (Poly Haven goegap_4k, meadow_2_4k,
+rogland_clear_night_4k; ~380 Msamples/s clay, ~1000 Msamples/s glass at 3245x2120). White blotches on
+glass under the hard desert sun = refracted sun glints, made worse by the normal map on glass and by the
+denoiser at low spp; fine with softer HDRIs or bump 0. Ideas: max-brightness clamp for specular env
+hits; rough glass/metal (milestone 6).
 .hdr via stb_image (EXR not yet). Float4 CUDA texture (wrap U, clamp V). Importance sampling: per-pixel
 luminance x sin(theta), marginal/conditional CDFs (buildEnvironmentTables, shared with the CPU mock),
 NEE towards the env on diffuse hits + MIS (power heuristic) with cosine bounce pdf; misses after

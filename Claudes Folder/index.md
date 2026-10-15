@@ -75,3 +75,7 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/Image.* (loadHdrImage), src/Scene.* (buildEnvironmentTables, hdri mode), src/Renderer.* (uploadEnvironment, setEnvironmentParams), src/device/*, src/LiveView.cpp, src/main.cpp
 2026-10-16 | BUG      | CPU mock: env texture got id 0, which the GPU code treated as "no environment" -> black render. Use envWidth > 0 as the flag instead
                       → src/device/pathtracer.cu
+2026-10-16 | BUILD    | HDRI verified on Drake's PC with three Poly Haven HDRIs (desert sun, meadow, night); glass/mirror/clay all correct
+                      → logs/2026-10-16_session-01.md
+2026-10-16 | BUG      | White blotches on glass bust under hard sun: refracted sun glints + normal map on glass + denoiser. Not a code bug; consider specular env clamp and rough glass
+                      → Claudes Folder/status.md
