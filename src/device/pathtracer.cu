@@ -30,6 +30,8 @@ struct HitInfo
     float3 position;
     float3 normal;         // geometric normal, as wound in the mesh (not yet flipped to face the ray)
     float3 shadingNormal;  // smooth interpolated normal, on the same side as `normal`
+    float4 tangent;        // interpolated tangent (xyz) and bitangent sign (w)
+    float2 uv;
     unsigned int materialId;
     unsigned int hit;
 };
@@ -123,6 +125,34 @@ __forceinline__ __device__ float3 clampCaustic(float3 c)
     return m > params.maxSampleValue ? c * (params.maxSampleValue / m) : c;
 }
 
+__forceinline__ __device__ float4 sampleTexture(int index, float2 uv, unsigned int flags)
+{
+    const float v = (flags & MATFLAG_FLIP_V) ? uv.y : 1.0f - uv.y;  // image row 0 is the top
+    return tex2D<float4>(params.textures[index], uv.x, v);
+}
+
+// Bends the smooth normal using the normal map (tangent space -> world space).
+__forceinline__ __device__ float3 applyNormalMap(const Material& m, const HitInfo& hit)
+{
+    const float3 N = hit.shadingNormal;
+    const float4 t = sampleTexture(m.normalTexture, hit.uv, m.flags);
+    float3 tn = make_float3(t.x * 2.0f - 1.0f, t.y * 2.0f - 1.0f, t.z * 2.0f - 1.0f);
+    if (m.flags & MATFLAG_FLIP_NORMAL_GREEN)
+        tn.y = -tn.y;
+    tn.x *= m.normalStrength;
+    tn.y *= m.normalStrength;
+    float3 T = make_float3(hit.tangent.x, hit.tangent.y, hit.tangent.z);
+    T = T - N * dot(N, T);
+    const float tl = length(T);
+    if (tl < 1e-6f)
+        return N;
+    T = T / tl;
+    const float3 B = cross(N, T) * hit.tangent.w;
+    const float3 mapped = normalize(T * tn.x + B * tn.y + N * fmaxf(tn.z, 1e-3f));
+    // Never let the bent normal face away from the real surface (it causes black spots).
+    return dot(mapped, hit.normal) > 0.05f ? mapped : N;
+}
+
 __forceinline__ __device__ bool isEmissive(const Material& m)
 {
     return m.emission.x > 0.0f || m.emission.y > 0.0f || m.emission.z > 0.0f;
@@ -176,11 +206,19 @@ extern "C" __global__ void __raygen__render()
             // ng: true surface side (used to offset new rays so they don't re-hit the surface).
             // n: smooth shading normal on the same side, used for lighting and reflection.
             const float3 ng = frontFace ? hit.normal : -hit.normal;
-            const float3 n = frontFace ? hit.shadingNormal : -hit.shadingNormal;
+            const float3 mappedNormal = m.normalTexture >= 0 ? applyNormalMap(m, hit) : hit.shadingNormal;
+            const float3 n = frontFace ? mappedNormal : -mappedNormal;
+
+            float3 albedo = m.albedo;
+            if (m.colorTexture >= 0)
+            {
+                const float4 c = sampleTexture(m.colorTexture, hit.uv, m.flags);
+                albedo = albedo * make_float3(c.x, c.y, c.z);
+            }
 
             if (depth == 0)
             {
-                albedoAov = m.albedo;
+                albedoAov = albedo;
                 normalAov = n;
             }
 
@@ -212,7 +250,7 @@ extern "C" __global__ void __raygen__render()
                     {
                         // BSDF (albedo/pi) * Le * geometry term / pdf(area), with pdf = 1/area.
                         const float g = cosSurface * cosLight / dist2;
-                        radiance += throughput * m.albedo * light.emission * (kInvPi * g * light.area);
+                        radiance += throughput * albedo * light.emission * (kInvPi * g * light.area);
                     }
                 }
 
@@ -220,7 +258,7 @@ extern "C" __global__ void __raygen__render()
                 // against the pdf, leaving just the albedo.
                 direction = sampleCosineHemisphere(n, rnd(seed), rnd(seed));
                 origin = hit.position + ng * kRayEpsilon;
-                throughput *= m.albedo;
+                throughput *= albedo;
                 countEmission = false;  // direct light was already counted by NEE
                 afterDiffuse = true;
             }
@@ -228,7 +266,7 @@ extern "C" __global__ void __raygen__render()
             {
                 direction = reflect(direction, n);
                 origin = hit.position + ng * kRayEpsilon;
-                throughput *= m.albedo;
+                throughput *= albedo;
                 countEmission = true;
             }
             else  // MAT_GLASS
@@ -246,7 +284,7 @@ extern "C" __global__ void __raygen__render()
                     direction = refractDir(direction, n, eta, cosI);
                     origin = hit.position - ng * kRayEpsilon;
                 }
-                throughput *= m.albedo;
+                throughput *= albedo;
                 countEmission = true;
             }
 
@@ -316,6 +354,13 @@ extern "C" __global__ void __closesthit__radiance()
     const float len = length(ns);
     ns = len > 0.0f ? ns / len : ng;
     hit->shadingNormal = dot(ns, ng) < 0.0f ? -ns : ns;  // keep it on the geometric side
+
+    const float b0 = 1.0f - bary.x - bary.y;
+    const float2 t0 = params.texcoords[tri.x], t1 = params.texcoords[tri.y], t2 = params.texcoords[tri.z];
+    hit->uv = make_float2(t0.x * b0 + t1.x * bary.x + t2.x * bary.y, t0.y * b0 + t1.y * bary.x + t2.y * bary.y);
+    const float4 g0 = params.tangents[tri.x], g1 = params.tangents[tri.y], g2 = params.tangents[tri.z];
+    hit->tangent = make_float4(g0.x * b0 + g1.x * bary.x + g2.x * bary.y, g0.y * b0 + g1.y * bary.x + g2.y * bary.y,
+                               g0.z * b0 + g1.z * bary.x + g2.z * bary.y, g0.w);
     hit->materialId = params.triangleMaterial[prim];
     hit->hit = 1u;
 }

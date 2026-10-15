@@ -57,6 +57,16 @@ Test models are in Drake's `models\` folder (git-ignored):
 - `Classical_Healer_Bust_-_Trellis_2_vs_SupaVoxel.usdz`: wait for USD support (Phase 2).
 Plan: first version auto-fits the model into the Cornell box (first version: auto-fit into the Cornell box, one clay/mirror/glass material, smooth normals; textures via .mtl after). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
+**Milestone 4 (textures): written and CPU-tested on the real Loewenfeld bust, not yet on Drake's PC.**
+OBJ vt parsing (unique v/vt/vn vertices; smooth normals computed per original position so UV seams
+don't show), tangents, .mtl map_Kd / map_Bump|bump|norm, plus auto-discovery of images named like the
+model with normal maps detected by colour (looksLikeNormalMap). GPU: CUDA texture objects (RGBA8,
+linear filter, wrap, sRGB decode for colour), cached per image across scene rebuilds. Material gets
+colorTexture/normalTexture/flags/normalStrength; V flipped by default (image row 0 = top).
+UI: texture names, Use textures, Flip V, Flip green, Bump strength (material-only update), drop images.
+CPU mock: tex2D mock + BVH (60k-tri bust in ~12 s). The bust loads upright, facing sideways.
+No mipmaps yet (8K textures may shimmer while moving at low spp).
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to

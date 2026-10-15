@@ -5,6 +5,7 @@
 #pragma once
 
 #include <optix_types.h>
+#include <texture_types.h>
 #include <vector_types.h>
 
 namespace moa {
@@ -23,12 +24,22 @@ enum MaterialType : unsigned int
     MAT_GLASS = 2,    // smooth dielectric with Fresnel, tinted by albedo
 };
 
+enum MaterialFlags : unsigned int
+{
+    MATFLAG_FLIP_V = 1u << 0,           // texture V runs top-down instead of OBJ's bottom-up
+    MATFLAG_FLIP_NORMAL_GREEN = 1u << 1,  // normal map uses the DirectX green convention
+};
+
 struct Material
 {
-    float3 albedo;      // base colour / tint
-    float3 emission;    // emitted radiance (non-zero for lights)
-    unsigned int type;  // MaterialType
-    float ior;          // index of refraction (glass only)
+    float3 albedo;        // base colour / tint (multiplied by the colour texture)
+    float3 emission;      // emitted radiance (non-zero for lights)
+    unsigned int type;    // MaterialType
+    float ior;            // index of refraction (glass only)
+    int colorTexture;     // index into LaunchParams::textures, or -1
+    int normalTexture;    // index into LaunchParams::textures, or -1
+    unsigned int flags;   // MaterialFlags
+    float normalStrength; // 0 = flat, 1 = as authored
 };
 
 // Pinhole camera. Primary ray direction = normalize(x * u + y * v + w) for x, y in [-1, 1].
@@ -72,9 +83,12 @@ struct LaunchParams
     // Scene geometry: indexed triangles with a shading normal per vertex.
     const float3* positions;
     const float3* normals;
+    const float2* texcoords;
+    const float4* tangents;  // xyz tangent, w bitangent sign
     const uint3* indices;
     const unsigned int* triangleMaterial;  // material index per triangle
     const Material* materials;
+    const cudaTextureObject_t* textures;
 
     OptixTraversableHandle handle;
 };

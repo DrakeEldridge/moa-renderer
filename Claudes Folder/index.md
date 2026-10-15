@@ -63,3 +63,7 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/Scene.* (rotateModel, addFittedMesh(rotation, spin, offset)), src/LiveView.cpp
 2026-10-16 | BUILD    | Verified on RTX 3080: uffizi torso (2.45M tris) loads in 0.5 s, 4K live render 232 Msamples/s, denoise 40.9 ms; rotation/move/scale controls work
                       → logs/2026-10-16_session-01.md
+2026-10-16 | FEATURE  | Milestone 4: colour textures + normal maps (UVs, tangents, .mtl, auto-detect by name and colour, CUDA textures w/ sRGB, cache), UI + image drag-and-drop
+                      → src/Image.*, src/MeshLoader.*, src/Scene.*, src/Renderer.* (uploadTextures, updateMaterials), src/device/*, src/LiveView.cpp, src/main.cpp
+2026-10-16 | BUILD    | CPU mock: tex2D mock + median-split BVH, so real models (60k tris) render in seconds; bust test shows correct UVs (no flip) and normal-map detail
+                      → Claudes Folder/tools/cpu_mock/

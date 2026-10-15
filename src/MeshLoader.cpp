@@ -83,14 +83,35 @@ bool resolveIndex(long idx, size_t count, uint32_t& out)
     return true;
 }
 
-bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error)
+struct ObjCorner
+{
+    uint32_t v, vt, vn;
+    bool hasTexcoord, hasNormal;
+};
+
+struct CornerKey
+{
+    uint32_t v, vt, vn;
+    bool operator==(const CornerKey& o) const { return v == o.v && vt == o.vt && vn == o.vn; }
+};
+struct CornerHash
+{
+    size_t operator()(const CornerKey& k) const
+    {
+        return (static_cast<size_t>(k.v) * 73856093u) ^ (static_cast<size_t>(k.vt) * 19349663u) ^
+               (static_cast<size_t>(k.vn) * 83492791u);
+    }
+};
+
+bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error, std::string& mtlFile)
 {
     std::vector<float3> filePositions;
     std::vector<float3> fileNormals;
-    struct Corner { uint32_t v; uint32_t vn; bool hasNormal; };
-    std::vector<Corner> corners;  // one per triangle corner, filled while parsing faces
+    std::vector<float2> fileTexcoords;
+    std::vector<ObjCorner> corners;  // three per triangle
     bool allHaveNormals = true;
-    std::vector<Corner> face;
+    bool allHaveTexcoords = true;
+    std::vector<ObjCorner> face;
 
     const char* p = data.data();
     const char* end = p + data.size();
@@ -118,6 +139,14 @@ bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error)
             n.z = parseFloat(q, end);
             fileNormals.push_back(n);
         }
+        else if (line[0] == 'v' && line[1] == 't' && (line[2] == ' ' || line[2] == '\t'))
+        {
+            const char* q = line + 3;
+            float2 t;
+            t.x = parseFloat(q, end);
+            t.y = parseFloat(q, end);
+            fileTexcoords.push_back(t);
+        }
         else if (line[0] == 'f' && (line[1] == ' ' || line[1] == '\t'))
         {
             face.clear();
@@ -132,13 +161,13 @@ bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error)
                 if (after == q)
                     break;
                 q = after;
-                long ni = 0;
+                long ti = 0, ni = 0;
                 if (*q == '/')
                 {
                     ++q;
                     if (*q != '/')
                     {
-                        std::strtol(q, &after, 10);  // texture coordinate index (not used yet)
+                        ti = std::strtol(q, &after, 10);
                         q = after;
                     }
                     if (*q == '/')
@@ -148,13 +177,15 @@ bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error)
                         q = after;
                     }
                 }
-                Corner c{};
+                ObjCorner c{};
                 if (!resolveIndex(vi, filePositions.size(), c.v))
                 {
                     error = "Bad vertex index on line " + std::to_string(lineNumber);
                     return false;
                 }
+                c.hasTexcoord = ti != 0 && resolveIndex(ti, fileTexcoords.size(), c.vt);
                 c.hasNormal = ni != 0 && resolveIndex(ni, fileNormals.size(), c.vn);
+                allHaveTexcoords &= c.hasTexcoord;
                 allHaveNormals &= c.hasNormal;
                 face.push_back(c);
                 while (*q && *q != ' ' && *q != '\t' && *q != '\n' && *q != '\r')
@@ -168,6 +199,16 @@ bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error)
                 corners.push_back(face[i + 1]);
             }
         }
+        else if (std::strncmp(line, "mtllib", 6) == 0 && (line[6] == ' ' || line[6] == '\t'))
+        {
+            const char* q = skipSpaces(line + 7);
+            const char* e = q;
+            while (e < end && *e != '\n' && *e != '\r')
+                ++e;
+            mtlFile.assign(q, e);
+            while (!mtlFile.empty() && (mtlFile.back() == ' ' || mtlFile.back() == '\t'))
+                mtlFile.pop_back();
+        }
     }
 
     if (corners.empty())
@@ -176,35 +217,124 @@ bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error)
         return false;
     }
 
-    if (allHaveNormals)
+    const bool useNormals = allHaveNormals && !fileNormals.empty();
+    const bool useTexcoords = allHaveTexcoords && !fileTexcoords.empty();
+    mesh.hasTexcoords = useTexcoords;
+
+    if (!useNormals && !useTexcoords)
     {
-        // Each unique (position, normal) pair becomes one vertex.
-        std::unordered_map<uint64_t, uint32_t> remap;
-        remap.reserve(corners.size());
-        std::vector<uint32_t> idx(corners.size());
-        for (size_t i = 0; i < corners.size(); ++i)
-        {
-            const uint64_t key = (static_cast<uint64_t>(corners[i].v) << 32) | corners[i].vn;
-            auto [it, inserted] = remap.try_emplace(key, static_cast<uint32_t>(mesh.positions.size()));
-            if (inserted)
-            {
-                mesh.positions.push_back(filePositions[corners[i].v]);
-                mesh.normals.push_back(normalize(fileNormals[corners[i].vn]));
-            }
-            idx[i] = it->second;
-        }
-        for (size_t i = 0; i < idx.size(); i += 3)
-            mesh.indices.push_back(make_uint3(idx[i], idx[i + 1], idx[i + 2]));
-    }
-    else
-    {
-        // No (or partial) normals: share positions and compute smooth normals.
+        // Positions only: share them and compute smooth normals.
         mesh.positions = std::move(filePositions);
         for (size_t i = 0; i < corners.size(); i += 3)
             mesh.indices.push_back(make_uint3(corners[i].v, corners[i + 1].v, corners[i + 2].v));
         computeSmoothNormals(mesh);
+        mesh.texcoords.assign(mesh.positions.size(), make_float2(0.0f, 0.0f));
+        return true;
+    }
+
+    // Each unique (position, texcoord, normal) combination becomes one vertex. UV seams split
+    // vertices, so smooth normals are computed per original position and shared across seams.
+    std::unordered_map<CornerKey, uint32_t, CornerHash> remap;
+    remap.reserve(corners.size());
+    std::vector<uint32_t> sourcePosition;
+    std::vector<uint32_t> idx(corners.size());
+    for (size_t i = 0; i < corners.size(); ++i)
+    {
+        const ObjCorner& c = corners[i];
+        const CornerKey key{c.v, useTexcoords ? c.vt : 0u, useNormals ? c.vn : 0u};
+        auto [it, inserted] = remap.try_emplace(key, static_cast<uint32_t>(mesh.positions.size()));
+        if (inserted)
+        {
+            mesh.positions.push_back(filePositions[c.v]);
+            mesh.texcoords.push_back(useTexcoords ? fileTexcoords[c.vt] : make_float2(0.0f, 0.0f));
+            if (useNormals)
+                mesh.normals.push_back(normalize(fileNormals[c.vn]));
+            sourcePosition.push_back(c.v);
+        }
+        idx[i] = it->second;
+    }
+    for (size_t i = 0; i < idx.size(); i += 3)
+        mesh.indices.push_back(make_uint3(idx[i], idx[i + 1], idx[i + 2]));
+
+    if (!useNormals)
+    {
+        Mesh shared;
+        shared.positions = std::move(filePositions);
+        for (size_t i = 0; i < corners.size(); i += 3)
+            shared.indices.push_back(make_uint3(corners[i].v, corners[i + 1].v, corners[i + 2].v));
+        computeSmoothNormals(shared);
+        mesh.normals.resize(mesh.positions.size());
+        for (size_t i = 0; i < mesh.positions.size(); ++i)
+            mesh.normals[i] = shared.normals[sourcePosition[i]];
     }
     return true;
+}
+
+// Reads map_Kd (colour) and map_Bump / bump / norm (normal) from an .mtl file. Paths are
+// resolved relative to the .mtl file.
+void readMtl(const std::filesystem::path& mtlPath, Mesh& mesh)
+{
+    std::vector<char> data;
+    if (!readFile(mtlPath.u8string(), data))
+        return;
+    const char* p = data.data();
+    const char* end = p + data.size();
+    while (p < end)
+    {
+        const char* line = skipSpaces(p);
+        p = nextLine(p, end);
+        const char* e = line;
+        while (e < end && *e != '\n' && *e != '\r')
+            ++e;
+        std::string text(line, e);
+        auto lastToken = [&](size_t from) {
+            // Options like "-bm 1.0" may come first; the file name is the last word.
+            std::string rest = text.substr(from);
+            while (!rest.empty() && (rest.back() == ' ' || rest.back() == '\t'))
+                rest.pop_back();
+            const size_t space = rest.find_last_of(" \t");
+            return space == std::string::npos ? rest : rest.substr(space + 1);
+        };
+        auto resolve = [&](const std::string& name) { return (mtlPath.parent_path() / std::filesystem::u8path(name)).u8string(); };
+        if (text.rfind("map_Kd ", 0) == 0 && mesh.colorTexturePath.empty())
+            mesh.colorTexturePath = resolve(lastToken(7));
+        else if ((text.rfind("map_Bump ", 0) == 0 || text.rfind("map_bump ", 0) == 0) && mesh.normalTexturePath.empty())
+            mesh.normalTexturePath = resolve(lastToken(9));
+        else if ((text.rfind("bump ", 0) == 0 || text.rfind("norm ", 0) == 0) && mesh.normalTexturePath.empty())
+            mesh.normalTexturePath = resolve(lastToken(5));
+    }
+}
+
+std::string lowerString(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+// Finds texture files for a model: from its .mtl if it has one, plus any images in the same
+// folder whose names start with the model's name.
+void findTextures(const std::string& modelPath, const std::string& mtlFile, Mesh& mesh)
+{
+    namespace fs = std::filesystem;
+    const fs::path model = fs::u8path(modelPath);
+    const fs::path folder = model.parent_path().empty() ? fs::path(".") : model.parent_path();
+    if (!mtlFile.empty())
+        readMtl(folder / fs::u8path(mtlFile), mesh);
+    std::error_code ec;
+    if (!fs::exists(mesh.colorTexturePath, ec))
+        mesh.colorTexturePath.clear();
+    if (!fs::exists(mesh.normalTexturePath, ec))
+        mesh.normalTexturePath.clear();
+
+    const std::string stem = lowerString(model.stem().u8string());
+    for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec))
+    {
+        if (!entry.is_regular_file(ec) || !isImageFile(entry.path().u8string()))
+            continue;
+        if (lowerString(entry.path().stem().u8string()).rfind(stem, 0) == 0)
+            mesh.candidateTextures.push_back(entry.path().u8string());
+    }
+    std::sort(mesh.candidateTextures.begin(), mesh.candidateTextures.end());
 }
 
 // ---------------------------------------------------------------------------------------- STL
@@ -321,6 +451,96 @@ void computeSmoothNormals(Mesh& mesh)
     }
 }
 
+void computeTangents(Mesh& mesh)
+{
+    const size_t n = mesh.positions.size();
+    std::vector<float3> tan(n, make_float3(0.0f, 0.0f, 0.0f));
+    std::vector<float3> bit(n, make_float3(0.0f, 0.0f, 0.0f));
+    if (mesh.hasTexcoords)
+    {
+        for (const uint3& t : mesh.indices)
+        {
+            const float3 p0 = mesh.positions[t.x], p1 = mesh.positions[t.y], p2 = mesh.positions[t.z];
+            const float2 w0 = mesh.texcoords[t.x], w1 = mesh.texcoords[t.y], w2 = mesh.texcoords[t.z];
+            const float3 e1 = p1 - p0, e2 = p2 - p0;
+            const float du1 = w1.x - w0.x, dv1 = w1.y - w0.y, du2 = w2.x - w0.x, dv2 = w2.y - w0.y;
+            const float det = du1 * dv2 - du2 * dv1;
+            if (std::fabs(det) < 1e-12f)
+                continue;
+            const float r = 1.0f / det;
+            const float3 sdir = (e1 * dv2 - e2 * dv1) * r;  // direction of increasing U
+            const float3 tdir = (e2 * du1 - e1 * du2) * r;  // direction of increasing V
+            for (uint32_t i : {t.x, t.y, t.z})
+            {
+                tan[i] += sdir;
+                bit[i] += tdir;
+            }
+        }
+    }
+    mesh.tangents.resize(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        const float3 nrm = mesh.normals[i];
+        float3 t = tan[i] - nrm * dot(nrm, tan[i]);  // make it perpendicular to the normal
+        if (dot(t, t) < 1e-20f)
+        {
+            // No usable UVs here: pick any direction perpendicular to the normal.
+            t = std::fabs(nrm.x) < 0.9f ? cross(nrm, make_float3(1.0f, 0.0f, 0.0f)) : cross(nrm, make_float3(0.0f, 1.0f, 0.0f));
+        }
+        t = normalize(t);
+        const float w = dot(cross(nrm, t), bit[i]) < 0.0f ? -1.0f : 1.0f;
+        mesh.tangents[i] = make_float4(t.x, t.y, t.z, w);
+    }
+}
+
+bool isImageFile(const std::string& path)
+{
+    const std::string ext = lowerExtension(path);
+    return ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".tga" || ext == ".bmp";
+}
+
+ModelTextures loadModelTextures(const Mesh& mesh, std::string& log)
+{
+    ModelTextures out;
+    std::string error;
+    auto note = [&](const std::string& line) { log += line + "\n"; };
+    if (!mesh.colorTexturePath.empty())
+    {
+        out.color = loadImage(mesh.colorTexturePath, error);
+        note(out.color ? "Colour (from .mtl): " + out.color->name : "Colour texture failed: " + error);
+    }
+    if (!mesh.normalTexturePath.empty())
+    {
+        out.normal = loadImage(mesh.normalTexturePath, error);
+        note(out.normal ? "Normal map (from .mtl): " + out.normal->name : "Normal map failed: " + error);
+    }
+    for (const std::string& path : mesh.candidateTextures)
+    {
+        if ((out.color && out.normal) || path == mesh.colorTexturePath || path == mesh.normalTexturePath)
+            continue;
+        ImagePtr image = loadImage(path, error);
+        if (!image)
+        {
+            note("Skipped " + path + ": " + error);
+            continue;
+        }
+        if (looksLikeNormalMap(*image))
+        {
+            if (!out.normal)
+            {
+                out.normal = image;
+                note("Normal map: " + image->name);
+            }
+        }
+        else if (!out.color)
+        {
+            out.color = image;
+            note("Colour: " + image->name);
+        }
+    }
+    return out;
+}
+
 bool loadMesh(const std::string& path, Mesh& mesh, std::string& error)
 {
     mesh = Mesh{};
@@ -333,15 +553,24 @@ bool loadMesh(const std::string& path, Mesh& mesh, std::string& error)
     }
     const std::string ext = lowerExtension(path);
     bool ok = false;
+    std::string mtlFile;
     if (ext == ".obj")
-        ok = loadObj(data, mesh, error);
+        ok = loadObj(data, mesh, error, mtlFile);
     else if (ext == ".stl")
         ok = loadStl(data, mesh, error);
     else
         error = "Unsupported file type '" + ext + "' (use .obj or .stl)";
     if (!ok)
+    {
         mesh = Mesh{};
-    return ok;
+        return false;
+    }
+    if (mesh.texcoords.size() != mesh.positions.size())
+        mesh.texcoords.assign(mesh.positions.size(), make_float2(0.0f, 0.0f));
+    computeTangents(mesh);
+    if (mesh.hasTexcoords)
+        findTextures(path, mtlFile, mesh);
+    return true;
 }
 
 }  // namespace moa

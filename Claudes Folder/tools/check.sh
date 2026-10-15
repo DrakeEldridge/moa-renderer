@@ -40,6 +40,6 @@ echo "   sizeof(LaunchParams) on host: $("$OUT/sz") (must match the PTX value ab
 echo "== CPU mock render"
 g++ -std=c++17 -O2 -pthread -w -I"$TOOLS/cpu_mock" -I"$CUDA_PIP/cuda_runtime/include" -I"$CUDA_PIP/cuda_nvcc/include" \
     -I"$ROOT/src" -I"$ROOT/src/device" -I"$ROOT/third_party" \
-    "$TOOLS/cpu_mock/cpu_pt.cpp" "$ROOT/src/Scene.cpp" "$ROOT/src/ImageIO.cpp" "$ROOT/src/MeshLoader.cpp" -o "$OUT/cpu_pt"
+    "$TOOLS/cpu_mock/cpu_pt.cpp" "$ROOT/src/Scene.cpp" "$ROOT/src/ImageIO.cpp" "$ROOT/src/MeshLoader.cpp" "$ROOT/src/Image.cpp" -o "$OUT/cpu_pt"
 (cd "$OUT" && ./cpu_pt "${1:-diffuse}" "${2:-diffuse}" "${3:-16}" "${4:-0}" ${5:+"$5"} ${6:+"$6"})
 echo "   images written to $OUT/cpu_*.png"

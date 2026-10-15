@@ -63,6 +63,8 @@ void printUsage()
         "  --tilt-x DEG         tilt the model around X (e.g. 90 or -90 to stand it up)\n"
         "  --tilt-z DEG         tilt the model around Z\n"
         "  --blocks             keep the two blocks when a model is loaded\n"
+        "  --no-textures        ignore the model's textures (clay render)\n"
+        "  --flip-v             flip texture V (for textures authored upside down)\n"
         "  --exposure X         exposure multiplier for the PNGs (default 1.0)\n"
         "  --clamp X            caustic firefly clamp, 0 = off (default 4)\n"
         "  --background X       grey background light behind the open front of the box (default 0)\n"
@@ -112,6 +114,8 @@ bool parseArgs(int argc, char** argv, Options& o)
         else if (a == "--model") o.model = next();
         else if (a == "--zup") o.scene.modelZUp = true;
         else if (a == "--blocks") o.scene.showBlocks = true;
+        else if (a == "--no-textures") o.scene.useTextures = false;
+        else if (a == "--flip-v") o.scene.flipV = true;
         else if (a == "--rotate") o.scene.modelYaw = std::strtof(next(), nullptr);
         else if (a == "--tilt-x") o.scene.rotateModel(0, std::strtof(next(), nullptr));
         else if (a == "--tilt-z") o.scene.rotateModel(2, std::strtof(next(), nullptr));
@@ -211,6 +215,9 @@ int main(int argc, char** argv)
                 throw std::runtime_error(error);
             std::printf("Model: %zu triangles\n", model.triangleCount());
             o.scene.model = &model;
+            std::string textureLog;
+            o.scene.modelTextures = moa::loadModelTextures(model, textureLog);
+            std::printf("%s", textureLog.c_str());
         }
         const moa::Scene scene = moa::makeCornellBox(o.scene);
         renderer.setScene(scene);

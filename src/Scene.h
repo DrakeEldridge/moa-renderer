@@ -20,13 +20,24 @@ struct CameraDesc
     float verticalFovDegrees;
 };
 
+// A texture used by the scene. sRGB = colour images (decoded to linear when sampled);
+// normal maps and other data images are linear.
+struct SceneTexture
+{
+    ImagePtr image;
+    bool srgb = true;
+};
+
 struct Scene
 {
     std::vector<float3> positions;               // vertex positions
     std::vector<float3> normals;                 // one per position (shading normals)
+    std::vector<float2> texcoords;               // one per position
+    std::vector<float4> tangents;                // one per position (for normal maps)
     std::vector<uint3> indices;                  // three positions per triangle
     std::vector<unsigned int> triangleMaterial;  // one per triangle
     std::vector<Material> materials;
+    std::vector<SceneTexture> textures;
     QuadLight light{};
     CameraDesc camera{};
 
@@ -36,6 +47,14 @@ struct Scene
     {
         materials.push_back(m);
         return static_cast<unsigned int>(materials.size() - 1);
+    }
+
+    int addTexture(const ImagePtr& image, bool srgb)
+    {
+        if (!image)
+            return -1;
+        textures.push_back({image, srgb});
+        return static_cast<int>(textures.size() - 1);
     }
 
     // Adds a planar quad a-b-c-d as two triangles. The winding is flipped if needed so the
@@ -73,6 +92,13 @@ struct CornellOptions
 
     // Turns the model around world axis 0 = X, 1 = Y, 2 = Z by `degrees`, on top of its current orientation.
     void rotateModel(int axis, float degrees);
+
+    // Model textures (optional) and how to read them.
+    ModelTextures modelTextures;
+    bool useTextures = true;
+    bool flipV = false;            // for textures authored with V running downwards
+    bool flipNormalGreen = false;  // for DirectX-style normal maps
+    float normalStrength = 1.0f;
 };
 
 Scene makeCornellBox(const CornellOptions& options);

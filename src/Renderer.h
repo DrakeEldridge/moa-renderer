@@ -9,7 +9,9 @@
 #include <optix.h>
 
 #include <functional>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace moa {
@@ -38,6 +40,9 @@ public:
     const std::string& deviceName() const { return m_deviceName; }
 
     void setScene(const Scene& scene);
+
+    // Faster than setScene() when only material settings changed (same geometry and textures).
+    void updateMaterials(const Scene& scene);
 
     // Progressive render. Calls `progress(samplesDone, samplesTotal)` after each launch.
     // Returns the render time in milliseconds.
@@ -94,10 +99,24 @@ private:
     // Scene
     CudaBuffer m_positions;
     CudaBuffer m_normals;
+    CudaBuffer m_texcoords;
+    CudaBuffer m_tangents;
     CudaBuffer m_indices;
     CudaBuffer m_triangleMaterial;
     CudaBuffer m_materials;
     CudaBuffer m_gas;
+
+    // GPU textures, cached by image so rebuilding the scene doesn't re-upload them.
+    struct GpuTexture
+    {
+        ImagePtr image;  // keeps the source alive while cached
+        cudaArray_t array = nullptr;
+        cudaTextureObject_t object = 0;
+    };
+    std::map<std::pair<const Image*, bool>, GpuTexture> m_textureCache;
+    CudaBuffer m_textureObjects;  // cudaTextureObject_t per scene texture index
+    void uploadTextures(const Scene& scene);
+    void releaseTexture(GpuTexture& texture);
     OptixTraversableHandle m_gasHandle = 0;
     Camera m_camera = {};
     CameraDesc m_cameraDesc = {};

@@ -116,8 +116,9 @@ void onDrop(GLFWwindow*, int count, const char** paths)
         g_droppedFiles.emplace_back(paths[i]);
 }
 
-// Loads a model and reports how long it took. Returns false (with a message) on failure.
-bool loadModel(const std::string& path, Mesh& mesh, std::string& status)
+// Loads a model (and the textures found next to it) and reports how long it took.
+// Returns false (with a message) on failure.
+bool loadModel(const std::string& path, Mesh& mesh, ModelTextures& textures, std::string& status)
 {
     std::printf("Loading %s ...\n", path.c_str());
     const auto t0 = Clock::now();
@@ -128,12 +129,14 @@ bool loadModel(const std::string& path, Mesh& mesh, std::string& status)
         std::fprintf(stderr, "%s\n", status.c_str());
         return false;
     }
+    std::string textureLog;
+    textures = loadModelTextures(mesh, textureLog);
     const double ms = msBetween(t0, Clock::now());
     char buf[256];
     std::snprintf(buf, sizeof(buf), "%s: %zu triangles, loaded in %.1f s", mesh.name.c_str(), mesh.triangleCount(),
                   ms / 1000.0);
     status = buf;
-    std::printf("%s\n", buf);
+    std::printf("%s\n%s", buf, textureLog.c_str());
     return true;
 }
 
@@ -264,7 +267,7 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
     int modelMaterial = static_cast<int>(sceneOptions.modelMaterial);
     int modelUp = sceneOptions.modelZUp ? 1 : 0;
     sceneOptions.model = nullptr;
-    if (!options.modelPath.empty() && loadModel(options.modelPath, model, modelStatus))
+    if (!options.modelPath.empty() && loadModel(options.modelPath, model, sceneOptions.modelTextures, modelStatus))
         sceneOptions.model = &model;
 
     Scene scene = makeCornellBox(sceneOptions);
@@ -474,15 +477,36 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
 
         ImGui::SeparatorText("Model");
         bool rebuildScene = false;
-        if (!g_droppedFiles.empty())
+        bool materialsChanged = false;
+        std::vector<std::string> dropped;
+        dropped.swap(g_droppedFiles);
+        for (const std::string& path : dropped)
         {
-            const std::string path = g_droppedFiles.back();
-            g_droppedFiles.clear();
+            if (isImageFile(path))
+            {
+                // An image dropped onto a loaded model: use it as its normal map or colour texture.
+                std::string error;
+                ImagePtr image = loadImage(path, error);
+                if (!image)
+                    modelStatus = "Couldn't load texture: " + error;
+                else if (!sceneOptions.model)
+                    modelStatus = "Load a model first, then drop its textures on.";
+                else
+                {
+                    const bool isNormal = looksLikeNormalMap(*image);
+                    (isNormal ? sceneOptions.modelTextures.normal : sceneOptions.modelTextures.color) = image;
+                    std::printf("%s: %s\n", isNormal ? "Normal map" : "Colour texture", image->name.c_str());
+                    rebuildScene = true;
+                }
+                continue;
+            }
             Mesh loaded;
-            if (loadModel(path, loaded, modelStatus))
+            ModelTextures loadedTextures;
+            if (loadModel(path, loaded, loadedTextures, modelStatus))
             {
                 model = std::move(loaded);
                 sceneOptions.model = &model;
+                sceneOptions.modelTextures = loadedTextures;
                 rebuildScene = true;
             }
         }
@@ -500,6 +524,22 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
                 sceneOptions.modelZUp = modelUp == 1;
                 rebuildScene = true;
             }
+            if (model.hasTexcoords)
+            {
+                const ModelTextures& tx = sceneOptions.modelTextures;
+                ImGui::TextDisabled("Colour: %s", tx.color ? tx.color->name.c_str() : "none (drop an image on)");
+                ImGui::TextDisabled("Normal: %s", tx.normal ? tx.normal->name.c_str() : "none (drop an image on)");
+                if (ImGui::Checkbox("Use textures", &sceneOptions.useTextures))
+                    rebuildScene = true;  // adds or removes textures, so a full rebuild
+                ImGui::SameLine();
+                materialsChanged |= ImGui::Checkbox("Flip V", &sceneOptions.flipV);
+                ImGui::SameLine();
+                materialsChanged |= ImGui::Checkbox("Flip green", &sceneOptions.flipNormalGreen);
+                materialsChanged |= ImGui::SliderFloat("Bump strength", &sceneOptions.normalStrength, 0.0f, 3.0f, "%.2f");
+            }
+            else
+                ImGui::TextDisabled("No texture coordinates in this model.");
+
             // Rotate: each click turns the model 90 degrees around a fixed room axis,
             // on top of its current orientation. Click until it looks right.
             ImGui::TextUnformatted("Rotate 90:");
@@ -528,10 +568,11 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             ImGui::SameLine();
             if (ImGui::Button("Reset##transform"))
             {
-                sceneOptions = CornellOptions{sceneOptions.tallBlock, sceneOptions.shortBlock, sceneOptions.model,
-                                              sceneOptions.modelMaterial, sceneOptions.showBlocks,
-                                              sceneOptions.modelZUp};
-                modelUp = sceneOptions.modelZUp ? 1 : 0;
+                const CornellOptions defaults;
+                std::copy(defaults.modelRotation, defaults.modelRotation + 9, sceneOptions.modelRotation);
+                sceneOptions.modelYaw = defaults.modelYaw;
+                sceneOptions.modelSize = defaults.modelSize;
+                sceneOptions.modelOffset = defaults.modelOffset;
                 rebuildScene = true;
             }
 
@@ -559,10 +600,18 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             if (ImGui::Button("Remove model"))
             {
                 sceneOptions.model = nullptr;
+                sceneOptions.modelTextures = ModelTextures{};
                 model = Mesh{};
                 modelStatus = "Drag an .obj or .stl file onto the window to load it.";
                 rebuildScene = true;
             }
+        }
+        if (materialsChanged && !rebuildScene)
+        {
+            // Material-only change: rebuild the scene description but upload just the materials.
+            scene = makeCornellBox(sceneOptions);
+            renderer.updateMaterials(scene);
+            restart = true;
         }
         if (rebuildScene)
         {

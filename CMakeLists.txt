@@ -75,7 +75,8 @@ add_executable(moa
     src/Scene.cpp
     src/ImageIO.cpp
     src/LiveView.cpp
-    src/MeshLoader.cpp)
+    src/MeshLoader.cpp
+    src/Image.cpp)
 target_include_directories(moa PRIVATE "${OPTIX_INCLUDE_DIR}" src third_party)
 target_link_libraries(moa PRIVATE CUDA::cudart imgui)
 if(WIN32)

@@ -24,6 +24,10 @@ Material diffuse(float r, float g, float b)
     m.emission = make_float3(0.0f, 0.0f, 0.0f);
     m.type = MAT_DIFFUSE;
     m.ior = 1.0f;
+    m.colorTexture = -1;
+    m.normalTexture = -1;
+    m.flags = 0;
+    m.normalStrength = 1.0f;
     return m;
 }
 
@@ -62,6 +66,10 @@ void Scene::addQuad(float3 a, float3 b, float3 c, float3 d, unsigned int materia
     const unsigned int base = static_cast<unsigned int>(positions.size());
     positions.insert(positions.end(), {a, b, c, d});
     normals.insert(normals.end(), {n, n, n, n});
+    const float3 t = normalize(b - a);
+    const float4 tangent = make_float4(t.x, t.y, t.z, 1.0f);
+    texcoords.insert(texcoords.end(), {make_float2(0.0f, 0.0f), make_float2(1.0f, 0.0f), make_float2(1.0f, 1.0f), make_float2(0.0f, 1.0f)});
+    tangents.insert(tangents.end(), {tangent, tangent, tangent, tangent});
     if (!flip)
     {
         indices.push_back(make_uint3(base, base + 1, base + 2));
@@ -112,6 +120,10 @@ void Scene::addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorC
     {
         positions.push_back(floorCenter + offset + (orient(mesh.positions[i]) - pivot) * scale);
         normals.push_back(normalize(orient(mesh.normals[i])));  // uniform scale keeps normals valid
+        texcoords.push_back(i < mesh.texcoords.size() ? mesh.texcoords[i] : make_float2(0.0f, 0.0f));
+        const float4 mt = i < mesh.tangents.size() ? mesh.tangents[i] : make_float4(1.0f, 0.0f, 0.0f, 1.0f);
+        const float3 rt = orient(make_float3(mt.x, mt.y, mt.z));
+        tangents.push_back(make_float4(rt.x, rt.y, rt.z, mt.w));
     }
     indices.reserve(indices.size() + mesh.indices.size());
     for (const uint3& t : mesh.indices)
@@ -192,6 +204,18 @@ Scene makeCornellBox(const CornellOptions& options)
         Material m = ofType(options.modelMaterial);
         if (options.modelMaterial == MAT_DIFFUSE)
             m.albedo = make_float3(0.8f, 0.8f, 0.8f);  // light clay
+        if (options.useTextures && options.model->hasTexcoords)
+        {
+            if (options.modelTextures.color && options.modelMaterial == MAT_DIFFUSE)
+            {
+                m.colorTexture = s.addTexture(options.modelTextures.color, true);
+                m.albedo = make_float3(1.0f, 1.0f, 1.0f);
+            }
+            if (options.modelTextures.normal)
+                m.normalTexture = s.addTexture(options.modelTextures.normal, false);
+            m.flags = (options.flipV ? MATFLAG_FLIP_V : 0u) | (options.flipNormalGreen ? MATFLAG_FLIP_NORMAL_GREEN : 0u);
+            m.normalStrength = options.normalStrength;
+        }
         const unsigned int modelId = s.addMaterial(m);
         s.addFittedMesh(*options.model, modelId, P(278.0f, 0.0f, 279.6f), options.modelSize, options.modelZUp,
                         options.modelRotation, options.modelYaw, options.modelOffset);

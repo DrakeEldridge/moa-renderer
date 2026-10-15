@@ -3,7 +3,9 @@
 #include "optix_types.h"
 #include <vector_types.h>
 #include <vector_functions.h>
+#include <texture_types.h>
 #include <cmath>
+#include <vector>
 #define __global__
 #define __device__
 #define __constant__
@@ -21,6 +23,26 @@ inline float optixGetRayTmax(){ return g_mock.tmax; }
 inline float2 optixGetTriangleBarycentrics(){ return g_mock.bary; }
 inline float3 optixGetWorldRayOrigin(){ return g_mock.o; }
 inline float3 optixGetWorldRayDirection(){ return g_mock.d; }
+// Textures: cudaTextureObject_t is an index into this list (filled by the harness).
+struct MockTexture { int w, h; const unsigned char* rgba; bool srgb; };
+extern std::vector<MockTexture> g_mockTextures;
+template <class T> T tex2D(cudaTextureObject_t, float, float);
+template <> inline float4 tex2D<float4>(cudaTextureObject_t t, float u, float v)
+{
+    const MockTexture& m = g_mockTextures[t];
+    u -= std::floor(u); v -= std::floor(v);  // wrap
+    int x = (int)(u * m.w); if (x >= m.w) x = m.w - 1;
+    int y = (int)(v * m.h); if (y >= m.h) y = m.h - 1;
+    const unsigned char* p = m.rgba + ((size_t)y * m.w + x) * 4;
+    float c[4];
+    for (int i = 0; i < 4; ++i) {
+        float f = p[i] / 255.0f;
+        if (m.srgb && i < 3) f = f <= 0.04045f ? f / 12.92f : std::pow((f + 0.055f) / 1.055f, 2.4f);
+        c[i] = f;
+    }
+    return make_float4(c[0], c[1], c[2], c[3]);
+}
+
 // Implemented in the test harness after pathtracer.cu is included.
 void mockTrace(OptixTraversableHandle, float3, float3, float, float, unsigned, unsigned, unsigned, unsigned*);
 inline void optixTrace(OptixTraversableHandle h, float3 o, float3 d, float tmin, float tmax, float, OptixVisibilityMask, unsigned flags, unsigned sbtOff, unsigned, unsigned missIdx, unsigned& p0, unsigned& p1){ unsigned p[2]={p0,p1}; mockTrace(h,o,d,tmin,tmax,flags,sbtOff,missIdx,p); p0=p[0]; p1=p[1]; }

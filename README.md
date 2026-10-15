@@ -23,6 +23,7 @@ cleaning it up as it goes. A command-line batch mode is still available.
 - Global illumination (bounce light), soft shadows, next-event estimation for fast cleanup
 - Materials: diffuse, mirror, glass (with Fresnel and refraction)
 - OBJ and STL model loading (ASCII and binary STL), smooth normals, auto-fit into the scene
+- Colour textures and normal maps (JPG, PNG, TGA, BMP), found from the .mtl file or next to the model
 - Progressive rendering (the image improves with every pass)
 - Render passes: beauty, albedo, normals
 - OptiX AI denoiser, guided by the albedo and normal passes
@@ -68,7 +69,12 @@ Double-click `live.bat` (or run `build\Release\moa.exe`).
 **Load a model:** drag an `.obj` or `.stl` file onto the window, or start with
 `live.bat --model models\yourmodel.obj`. It's placed on the floor of the box and scaled to fit;
 the Model section of the panel changes its material (clay, mirror, glass), up axis (many STL files
-are Z-up), rotation and size.
+are Z-up), rotation, position and size.
+
+**Textures:** a colour texture and normal map are picked up automatically from the model's `.mtl`
+file, or from images next to the model whose names start with the model's name (normal maps are
+recognised by their colour). You can also drag image files onto the window. "Flip V" and "Flip green"
+fix textures authored with other conventions; "Bump strength" scales the normal map.
 
 The panel on the right shows progress and speed, switches between the raw, denoised, albedo and
 normal views, and changes samples, bounces, exposure, background and block materials.
@@ -114,7 +120,8 @@ build.bat / run.bat      one-click build and batch test render (Windows)
 live.bat                 opens the live render window
 src/main.cpp             command-line front end (live window by default, --batch for files)
 src/LiveView.*           live render window (GLFW + Dear ImGui)
-src/MeshLoader.*         OBJ and STL loading
+src/MeshLoader.*         OBJ and STL loading, texture discovery
+src/Image.*              texture image loading (stb_image)
 src/Renderer.*           OptiX setup, scene upload, render loop, denoiser
 src/Scene.*              scene description and the built-in Cornell box
 src/ImageIO.*            PNG and PFM output
@@ -141,5 +148,5 @@ Claudes Folder/          project memory: status, change index and session logs
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE). Third-party code keeps its own licence
-(stb_image_write: public domain / MIT; GLFW: zlib; Dear ImGui: MIT, both downloaded at build time). The OptiX headers are downloaded at build time
+(stb_image and stb_image_write: public domain / MIT; GLFW: zlib; Dear ImGui: MIT, both downloaded at build time). The OptiX headers are downloaded at build time
 under NVIDIA's SDK licence and are not part of this repository.

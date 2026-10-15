@@ -79,6 +79,8 @@ Renderer::Renderer(const std::string& ptxPath, bool verbose)
 
 Renderer::~Renderer()
 {
+    for (auto& entry : m_textureCache)
+        releaseTexture(entry.second);
     // Release GPU memory before tearing down OptiX objects.
     m_denoiserState.release();
     m_denoiserScratch.release();
@@ -227,14 +229,83 @@ void Renderer::setScene(const Scene& scene)
         scene.normals.size() != scene.positions.size())
         throw std::runtime_error("Scene has no triangles or inconsistent geometry");
 
+    if (scene.texcoords.size() != scene.positions.size() || scene.tangents.size() != scene.positions.size())
+        throw std::runtime_error("Scene texture coordinates/tangents don't match its positions");
+
     m_positions.upload(scene.positions);
     m_normals.upload(scene.normals);
+    m_texcoords.upload(scene.texcoords);
+    m_tangents.upload(scene.tangents);
     m_indices.upload(scene.indices);
+    uploadTextures(scene);
     m_triangleMaterial.upload(scene.triangleMaterial);
     m_materials.upload(scene.materials);
     m_cameraDesc = scene.camera;
     m_light = scene.light;
     buildAccel(scene);
+}
+
+void Renderer::updateMaterials(const Scene& scene)
+{
+    m_materials.upload(scene.materials);
+    m_launch.materials = m_materials.as<const Material>();
+}
+
+void Renderer::releaseTexture(GpuTexture& texture)
+{
+    if (texture.object)
+        cudaDestroyTextureObject(texture.object);
+    if (texture.array)
+        cudaFreeArray(texture.array);
+    texture.object = 0;
+    texture.array = nullptr;
+}
+
+void Renderer::uploadTextures(const Scene& scene)
+{
+    std::map<std::pair<const Image*, bool>, GpuTexture> keep;
+    std::vector<cudaTextureObject_t> objects;
+    for (const SceneTexture& st : scene.textures)
+    {
+        const auto key = std::make_pair(st.image.get(), st.srgb);
+        auto cached = m_textureCache.find(key);
+        if (cached != m_textureCache.end())
+        {
+            keep[key] = cached->second;
+            m_textureCache.erase(cached);
+        }
+        else if (keep.find(key) == keep.end())
+        {
+            const Image& img = *st.image;
+            GpuTexture tex;
+            tex.image = st.image;
+            const cudaChannelFormatDesc format = cudaCreateChannelDesc<uchar4>();
+            CUDA_CHECK(cudaMallocArray(&tex.array, &format, static_cast<size_t>(img.width), static_cast<size_t>(img.height)));
+            CUDA_CHECK(cudaMemcpy2DToArray(tex.array, 0, 0, img.rgba.data(), static_cast<size_t>(img.width) * 4,
+                                           static_cast<size_t>(img.width) * 4, static_cast<size_t>(img.height),
+                                           cudaMemcpyHostToDevice));
+            cudaResourceDesc res = {};
+            res.resType = cudaResourceTypeArray;
+            res.res.array.array = tex.array;
+            cudaTextureDesc desc = {};
+            desc.addressMode[0] = cudaAddressModeWrap;
+            desc.addressMode[1] = cudaAddressModeWrap;
+            desc.filterMode = cudaFilterModeLinear;
+            desc.readMode = cudaReadModeNormalizedFloat;  // bytes come back as 0..1 floats
+            desc.normalizedCoords = 1;
+            desc.sRGB = st.srgb ? 1 : 0;  // colour images are decoded to linear light
+            CUDA_CHECK(cudaCreateTextureObject(&tex.object, &res, &desc, nullptr));
+            keep[key] = tex;
+        }
+        objects.push_back(keep[key].object);
+    }
+    // Free textures the new scene no longer uses.
+    for (auto& entry : m_textureCache)
+        releaseTexture(entry.second);
+    m_textureCache = std::move(keep);
+    if (objects.empty())
+        objects.push_back(0);  // keep a valid (unused) pointer for the GPU programs
+    m_textureObjects.upload(objects);
 }
 
 void Renderer::buildAccel(const Scene& scene)
@@ -308,6 +379,9 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.light = m_light;
     lp.positions = m_positions.as<const float3>();
     lp.normals = m_normals.as<const float3>();
+    lp.texcoords = m_texcoords.as<const float2>();
+    lp.tangents = m_tangents.as<const float4>();
+    lp.textures = m_textureObjects.as<const cudaTextureObject_t>();
     lp.indices = m_indices.as<const uint3>();
     lp.triangleMaterial = m_triangleMaterial.as<const unsigned int>();
     lp.materials = m_materials.as<const Material>();
