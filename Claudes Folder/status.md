@@ -32,6 +32,7 @@ Follow-ups for the live window:
   Next speedups: AI 2x upscale for the low-res frames; CUDA-GL interop (the per-frame host copy +
   CPU encode scales with pixel count).
 - CUDA-GL interop instead of host copy if display becomes a bottleneck.
+- Mirror shows black where it reflects the open box front (Background 0). HDRI lighting will fix.
 
 **Milestone 3 (OBJ/STL loading): works on Drake's PC** (uffizi torso, 2,451,630 tris; first build took
 8.5 s to load with strtof, now from_chars: 0.5 s for a 2.4M-tri test file here). Models load in
@@ -57,7 +58,8 @@ Test models are in Drake's `models\` folder (git-ignored):
 - `Classical_Healer_Bust_-_Trellis_2_vs_SupaVoxel.usdz`: wait for USD support (Phase 2).
 Plan: first version auto-fits the model into the Cornell box (first version: auto-fit into the Cornell box, one clay/mirror/glass material, smooth normals; textures via .mtl after). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
-**Milestone 4 (textures): written and CPU-tested on the real Loewenfeld bust, not yet on Drake's PC.**
+**Milestone 4 (textures): works on Drake's PC** (bust textured, bump 0-3, mirror, glass, Save images OK).
+Added after: Reset bump button + right-click any slider to reset it (untested).
 OBJ vt parsing (unique v/vt/vn vertices; smooth normals computed per original position so UV seams
 don't show), tangents, .mtl map_Kd / map_Bump|bump|norm, plus auto-discovery of images named like the
 model with normal maps detected by colour (looksLikeNormalMap). GPU: CUDA texture objects (RGBA8,

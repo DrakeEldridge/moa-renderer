@@ -67,3 +67,7 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/Image.*, src/MeshLoader.*, src/Scene.*, src/Renderer.* (uploadTextures, updateMaterials), src/device/*, src/LiveView.cpp, src/main.cpp
 2026-10-16 | BUILD    | CPU mock: tex2D mock + median-split BVH, so real models (60k tris) render in seconds; bust test shows correct UVs (no flip) and normal-map detail
                       → Claudes Folder/tools/cpu_mock/
+2026-10-16 | BUILD    | Textures verified on Drake's PC: Loewenfeld bust colour + normal map, bump 0..3, mirror/glass, Save images
+                      → logs/2026-10-16_session-01.md
+2026-10-16 | FEATURE  | Reset bump button; right-click any slider to reset to default (resetOnRightClick helper)
+                      → src/LiveView.cpp

@@ -217,6 +217,28 @@ struct WindowContext
     WindowContext& operator=(const WindowContext&) = delete;
 };
 
+// Right-clicking the slider (or other widget) just drawn resets it to its default.
+// Returns true if it was reset.
+bool resetOnRightClick(float& value, float defaultValue)
+{
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && value != defaultValue)
+    {
+        value = defaultValue;
+        return true;
+    }
+    return false;
+}
+
+bool resetOnRightClick(int& value, int defaultValue)
+{
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && value != defaultValue)
+    {
+        value = defaultValue;
+        return true;
+    }
+    return false;
+}
+
 enum ViewMode : int { VIEW_BEAUTY = 0, VIEW_DENOISED, VIEW_ALBEDO, VIEW_NORMAL };
 const char* const kViewNames[] = {"Beauty (raw)", "Denoised", "Albedo", "Normal"};
 const char* const kMaterialNames[] = {"Diffuse", "Mirror", "Glass"};
@@ -421,6 +443,7 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             displayDirty = true;
         if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 8.0f, "%.2f", ImGuiSliderFlags_Logarithmic))
             displayDirty = true;
+        displayDirty |= resetOnRightClick(exposure, 1.0f);
         if (ImGui::Checkbox("AI denoiser", &denoiseEnabled))
         {
             restart = true;
@@ -454,14 +477,20 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         ImGui::SeparatorText("Sampling");
         if (ImGui::SliderInt("Samples", &targetSpp, 1, 8192, "%d", ImGuiSliderFlags_Logarithmic))
             finalDenoiseDone = false;  // raising the target just continues rendering
+        if (resetOnRightClick(targetSpp, 256))
+            finalDenoiseDone = false;
         if (ImGui::SliderInt("Per pass", &samplesPerPass, 1, 16))
             restart = true;
+        restart |= resetOnRightClick(samplesPerPass, 2);
         if (ImGui::SliderInt("Bounces", &maxDepth, 1, 32))
             restart = true;
+        restart |= resetOnRightClick(maxDepth, 8);
         if (ImGui::SliderFloat("Caustic clamp", &settings.maxSampleValue, 0.0f, 20.0f, "%.1f"))
             restart = true;
+        restart |= resetOnRightClick(settings.maxSampleValue, 4.0f);
         if (ImGui::SliderFloat("Background", &settings.background, 0.0f, 2.0f, "%.2f"))
             restart = true;
+        restart |= resetOnRightClick(settings.background, 0.0f);
 
         ImGui::SeparatorText("Scene");
         const bool tallChanged = ImGui::Combo("Tall block", &tallMaterial, kMaterialNames, IM_ARRAYSIZE(kMaterialNames));
@@ -536,6 +565,12 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
                 ImGui::SameLine();
                 materialsChanged |= ImGui::Checkbox("Flip green", &sceneOptions.flipNormalGreen);
                 materialsChanged |= ImGui::SliderFloat("Bump strength", &sceneOptions.normalStrength, 0.0f, 3.0f, "%.2f");
+                materialsChanged |= resetOnRightClick(sceneOptions.normalStrength, 1.0f);
+                if (ImGui::Button("Reset bump"))
+                {
+                    sceneOptions.normalStrength = 1.0f;
+                    materialsChanged = true;
+                }
             }
             else
                 ImGui::TextDisabled("No texture coordinates in this model.");
@@ -579,21 +614,36 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             // Big meshes take a moment to rebuild, so sliders apply when released.
             // Ctrl+click a slider to type an exact value.
             ImGui::SliderFloat("Spin", &sceneOptions.modelYaw, -180.0f, 180.0f, "%.0f deg");
-            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
+            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit() || resetOnRightClick(sceneOptions.modelYaw, 0.0f);
             ImGui::SliderFloat("Scale", &sceneOptions.modelSize, 0.2f, 5.0f, "%.2f");
-            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
+            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit() || resetOnRightClick(sceneOptions.modelSize, 3.6f);
             // Moves are camera-relative: the camera looks down +Z with +X on its left.
             float moveRight = -sceneOptions.modelOffset.x;
             float moveUp = sceneOptions.modelOffset.y;
             float moveIn = sceneOptions.modelOffset.z;
             if (ImGui::SliderFloat("Left / right", &moveRight, -3.0f, 3.0f, "%.2f"))
                 sceneOptions.modelOffset.x = -moveRight;
+            if (resetOnRightClick(moveRight, 0.0f))
+            {
+                sceneOptions.modelOffset.x = 0.0f;
+                rebuildScene = true;
+            }
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
             if (ImGui::SliderFloat("Down / up", &moveUp, -2.0f, 4.0f, "%.2f"))
                 sceneOptions.modelOffset.y = moveUp;
+            if (resetOnRightClick(moveUp, 0.0f))
+            {
+                sceneOptions.modelOffset.y = 0.0f;
+                rebuildScene = true;
+            }
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
             if (ImGui::SliderFloat("Near / far", &moveIn, -3.0f, 3.0f, "%.2f"))
                 sceneOptions.modelOffset.z = moveIn;
+            if (resetOnRightClick(moveIn, 0.0f))
+            {
+                sceneOptions.modelOffset.z = 0.0f;
+                rebuildScene = true;
+            }
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
             if (ImGui::Checkbox("Show blocks", &sceneOptions.showBlocks))
                 rebuildScene = true;
@@ -625,6 +675,7 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         ImGui::SeparatorText("Camera");
         if (ImGui::SliderFloat("Field of view", &cam.fov, 10.0f, 100.0f, "%.1f deg"))
             restart = true;
+        restart |= resetOnRightClick(cam.fov, homeCam.fov);
         if (ImGui::Button("Reset camera (F)"))
         {
             cam = homeCam;
@@ -664,7 +715,7 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             ctx.applyUiScale(uiSize);
 
         ImGui::SeparatorText("Controls");
-        ImGui::TextWrapped("Left drag: tumble\nMiddle drag: pan\nRight drag: dolly\nWheel: dolly\nF: reset camera");
+        ImGui::TextWrapped("Left drag: tumble\nMiddle drag: pan\nRight drag: dolly\nWheel: dolly\nF: reset camera\n\nSliders: right-click to reset,\nCtrl+click to type a value.");
         ImGui::End();
 
         // --- Rendering ---
