@@ -3,6 +3,7 @@
 // normal passes as PNGs (plus HDR .pfm files with --hdr).
 // SPDX-License-Identifier: Apache-2.0
 #include "ImageIO.h"
+#include "LiveView.h"
 #include "Renderer.h"
 #include "Scene.h"
 
@@ -36,6 +37,7 @@ struct Options
     bool denoise = true;
     bool hdr = false;
     bool verbose = false;
+    bool batch = false;  // render once and save, instead of opening the live window
 };
 
 void printUsage()
@@ -43,6 +45,8 @@ void printUsage()
     std::printf(
         "MOA Renderer %s\n"
         "Usage: moa [options]\n"
+        "Opens the live render window. Add --batch to render once and save images instead.\n"
+        "  --batch              render without a window and write images (see --out)\n"
         "  --width N            image width (default 1024)\n"
         "  --height N           image height (default 1024)\n"
         "  --spp N              samples per pixel (default 256)\n"
@@ -95,6 +99,7 @@ bool parseArgs(int argc, char** argv, Options& o)
         else if (a == "--no-denoise") o.denoise = false;
         else if (a == "--hdr") o.hdr = true;
         else if (a == "--verbose") o.verbose = true;
+        else if (a == "--batch") o.batch = true;
         else if (a == "--tall" || a == "--short")
         {
             const std::string name = next();
@@ -163,6 +168,17 @@ int main(int argc, char** argv)
         std::printf("MOA Renderer %s\n", kVersion);
         moa::Renderer renderer(ptxPath, o.verbose);
         std::printf("GPU: %s\n", renderer.deviceName().c_str());
+
+        if (!o.batch)
+        {
+            moa::LiveOptions live;
+            live.render = o.render;
+            live.scene = o.scene;
+            live.exposure = o.exposure;
+            live.outPrefix = o.out == "renders/cornell" ? "renders/live" : o.out;
+            std::printf("Opening the live render window...\n");
+            return moa::runLiveView(renderer, live);
+        }
 
         const moa::Scene scene = moa::makeCornellBox(o.scene);
         renderer.setScene(scene);

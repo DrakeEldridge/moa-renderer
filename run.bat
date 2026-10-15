@@ -11,7 +11,7 @@ if not exist "build\Release\moa.exe" (
 )
 
 if not exist renders mkdir renders
-"build\Release\moa.exe" --out renders\cornell %*
+"build\Release\moa.exe" --batch --out renders\cornell %*
 if errorlevel 1 (
     echo.
     echo === Render FAILED. Copy the messages above and send them to Claude. ===

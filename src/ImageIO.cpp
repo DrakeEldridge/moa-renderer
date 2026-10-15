@@ -42,39 +42,74 @@ float acesFilmic(float x)
 
 uint8_t toByte(float x) { return static_cast<uint8_t>(std::lround(std::clamp(x, 0.0f, 1.0f) * 255.0f)); }
 
+
+// Lookup table for linear -> sRGB bytes; avoids a pow() per channel per pixel.
+const uint8_t* srgbLut()
+{
+    static uint8_t lut[4096];
+    static bool ready = false;
+    if (!ready)
+    {
+        for (int i = 0; i < 4096; ++i)
+            lut[i] = toByte(linearToSrgb(static_cast<float>(i) / 4095.0f));
+        ready = true;
+    }
+    return lut;
+}
+
+inline uint8_t srgbByte(const uint8_t* lut, float x)
+{
+    const float c = std::clamp(x, 0.0f, 1.0f);
+    return lut[static_cast<int>(c * 4095.0f + 0.5f)];
+}
+
 }  // namespace
+
+void encodeRgba8(const std::vector<float4>& pixels, std::vector<uint8_t>& out, PngEncoding encoding, float exposure)
+{
+    const uint8_t* lut = srgbLut();
+    out.resize(pixels.size() * 4);
+    for (size_t i = 0; i < pixels.size(); ++i)
+    {
+        const float4 p = pixels[i];
+        uint8_t* d = &out[i * 4];
+        switch (encoding)
+        {
+        case PngEncoding::Beauty:
+            d[0] = srgbByte(lut, acesFilmic(p.x * exposure));
+            d[1] = srgbByte(lut, acesFilmic(p.y * exposure));
+            d[2] = srgbByte(lut, acesFilmic(p.z * exposure));
+            break;
+        case PngEncoding::Albedo:
+            d[0] = srgbByte(lut, p.x);
+            d[1] = srgbByte(lut, p.y);
+            d[2] = srgbByte(lut, p.z);
+            break;
+        case PngEncoding::Normal:
+            d[0] = toByte(p.x * 0.5f + 0.5f);
+            d[1] = toByte(p.y * 0.5f + 0.5f);
+            d[2] = toByte(p.z * 0.5f + 0.5f);
+            break;
+        }
+        d[3] = 255;
+    }
+}
 
 bool writePng(const std::string& path, unsigned int width, unsigned int height,
               const std::vector<float4>& pixels, PngEncoding encoding, float exposure)
 {
     if (pixels.size() < static_cast<size_t>(width) * height)
         return false;
+    std::vector<uint8_t> rgba;
+    encodeRgba8(pixels, rgba, encoding, exposure);
 
-    std::vector<uint8_t> out(static_cast<size_t>(width) * height * 3);
+    // PNG rows go top to bottom; our buffers go bottom to top.
+    const size_t rowBytes = static_cast<size_t>(width) * 4;
+    std::vector<uint8_t> flipped(rgba.size());
     for (unsigned int y = 0; y < height; ++y)
-    {
-        const unsigned int srcRow = height - 1 - y;  // PNG rows go top to bottom
-        for (unsigned int x = 0; x < width; ++x)
-        {
-            const float4 p = pixels[static_cast<size_t>(srcRow) * width + x];
-            float c[3] = {p.x, p.y, p.z};
-            for (float& v : c)
-            {
-                switch (encoding)
-                {
-                case PngEncoding::Beauty: v = linearToSrgb(acesFilmic(v * exposure)); break;
-                case PngEncoding::Albedo: v = linearToSrgb(v); break;
-                case PngEncoding::Normal: v = v * 0.5f + 0.5f; break;
-                }
-            }
-            uint8_t* dst = &out[(static_cast<size_t>(y) * width + x) * 3];
-            dst[0] = toByte(c[0]);
-            dst[1] = toByte(c[1]);
-            dst[2] = toByte(c[2]);
-        }
-    }
-    return stbi_write_png(path.c_str(), static_cast<int>(width), static_cast<int>(height), 3, out.data(),
-                          static_cast<int>(width * 3)) != 0;
+        std::copy_n(&rgba[static_cast<size_t>(height - 1 - y) * rowBytes], rowBytes, &flipped[y * rowBytes]);
+    return stbi_write_png(path.c_str(), static_cast<int>(width), static_cast<int>(height), 4, flipped.data(),
+                          static_cast<int>(rowBytes)) != 0;
 }
 
 bool writePfm(const std::string& path, unsigned int width, unsigned int height, const std::vector<float4>& pixels)

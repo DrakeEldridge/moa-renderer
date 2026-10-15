@@ -32,6 +32,34 @@ if(NOT EXISTS "${OPTIX_INCLUDE_DIR}/optix.h")
 endif()
 message(STATUS "OptiX headers: ${OPTIX_INCLUDE_DIR}")
 
+# --- Window libraries (live render view) -------------------------------------------------
+# GLFW (window + input) and Dear ImGui (settings panel) are downloaded from GitHub.
+find_package(OpenGL REQUIRED)
+include(FetchContent)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG 3.4
+    GIT_SHALLOW TRUE)
+FetchContent_Declare(imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.91.9b
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(glfw imgui)
+
+add_library(imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
+
 # --- GPU programs (compiled to PTX, loaded by OptiX at runtime) --------------------------
 add_library(moa_device OBJECT src/device/pathtracer.cu)
 set_target_properties(moa_device PROPERTIES
@@ -45,9 +73,10 @@ add_executable(moa
     src/main.cpp
     src/Renderer.cpp
     src/Scene.cpp
-    src/ImageIO.cpp)
+    src/ImageIO.cpp
+    src/LiveView.cpp)
 target_include_directories(moa PRIVATE "${OPTIX_INCLUDE_DIR}" src third_party)
-target_link_libraries(moa PRIVATE CUDA::cudart)
+target_link_libraries(moa PRIVATE CUDA::cudart imgui)
 if(WIN32)
     target_compile_definitions(moa PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     target_link_libraries(moa PRIVATE Cfgmgr32)  # used by OptiX to locate the driver

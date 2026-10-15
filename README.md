@@ -13,8 +13,9 @@ with plugins for Houdini (first), Maya, Blender and more via USD Hydra.
 
 Design doc: https://claude.ai/code/artifact/8bf26f6e-14ce-49b0-b4e8-3c5d4d2b9062
 
-**Status:** Phase 1, milestone 1. A command-line renderer that path-traces a built-in
-Cornell box on an NVIDIA RTX GPU and denoises it with the OptiX AI denoiser.
+**Status:** Phase 1, milestone 2. A live render window: the image renders progressively and
+restarts instantly when you move the camera or change a setting, with the OptiX AI denoiser
+cleaning it up as it goes. A command-line batch mode is still available.
 
 ## What it does right now
 
@@ -35,7 +36,7 @@ Cornell box on an NVIDIA RTX GPU and denoises it with the OptiX AI denoiser.
 | Visual Studio | 2022 (17.14+) or 2026 | Workload: "Desktop development with C++" |
 | CUDA Toolkit | 12.9 or 13.x | Install **after** Visual Studio |
 | CMake | 4.x | From cmake.org, added to PATH |
-| Git | any | Used by CMake to download the OptiX headers |
+| Git | any | Used by CMake to download the OptiX headers, GLFW and Dear ImGui |
 
 You don't need to download the OptiX SDK: the build fetches the OptiX headers from
 NVIDIA's GitHub automatically, and the OptiX runtime is part of the NVIDIA driver.
@@ -52,12 +53,27 @@ cmake --build build --config Release
 The first configure downloads the OptiX headers, so it needs internet access.
 The result is `build\Release\moa.exe`, with `pathtracer.ptx` (the GPU programs) next to it.
 
-## Run
+## Live window
+
+Double-click `live.bat` (or run `build\Release\moa.exe`).
+
+| Mouse | Action |
+| --- | --- |
+| Left drag | Tumble around the scene |
+| Middle drag | Pan |
+| Right drag / wheel | Dolly in and out |
+| F | Reset the camera |
+
+The panel on the right shows progress and speed, switches between the raw, denoised, albedo and
+normal views, and changes samples, bounces, exposure, background and block materials.
+"Save images" writes PNGs to `renders\live_*.png`.
+
+## Batch render
 
 Double-click `run.bat`, or:
 
 ```bat
-build\Release\moa.exe --out renders\cornell
+build\Release\moa.exe --batch --out renders\cornell
 ```
 
 This writes four images to `renders\`:
@@ -73,13 +89,13 @@ Some things to try:
 
 ```bat
 rem Mirror tall block and glass short block, with a grey background so the mirror has something to reflect
-build\Release\moa.exe --tall mirror --short glass --background 0.3 --out renders\mirror_glass
+build\Release\moa.exe --batch --tall mirror --short glass --background 0.3 --out renders\mirror_glass
 
 rem Fewer samples to see how much the denoiser does on its own
-build\Release\moa.exe --spp 16 --out renders\quick
+build\Release\moa.exe --batch --spp 16 --out renders\quick
 
 rem High quality, also writing full-range HDR .pfm files for comp
-build\Release\moa.exe --spp 2048 --spl 16 --hdr --out renders\final
+build\Release\moa.exe --batch --spp 2048 --spl 16 --hdr --out renders\final
 ```
 
 Run `moa.exe --help` for every option.
@@ -88,8 +104,10 @@ Run `moa.exe --help` for every option.
 
 ```
 CMakeLists.txt           build script
-build.bat / run.bat      one-click build and test render (Windows)
-src/main.cpp             command-line front end
+build.bat / run.bat      one-click build and batch test render (Windows)
+live.bat                 opens the live render window
+src/main.cpp             command-line front end (live window by default, --batch for files)
+src/LiveView.*           live render window (GLFW + Dear ImGui)
 src/Renderer.*           OptiX setup, scene upload, render loop, denoiser
 src/Scene.*              scene description and the built-in Cornell box
 src/ImageIO.*            PNG and PFM output
@@ -116,5 +134,5 @@ Claudes Folder/          project memory: status, change index and session logs
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE). Third-party code keeps its own licence
-(stb_image_write: public domain / MIT). The OptiX headers are downloaded at build time
+(stb_image_write: public domain / MIT; GLFW: zlib; Dear ImGui: MIT, both downloaded at build time). The OptiX headers are downloaded at build time
 under NVIDIA's SDK licence and are not part of this repository.

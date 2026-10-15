@@ -276,25 +276,21 @@ void Renderer::resizeFrame(unsigned int width, unsigned int height)
     m_denoised.resize(bytes);
 }
 
-double Renderer::render(const RenderSettings& settings, const std::function<void(unsigned int, unsigned int)>& progress)
+void Renderer::beginProgressive(const RenderSettings& settings)
 {
     if (!m_gasHandle)
-        throw std::runtime_error("render() called before setScene()");
+        throw std::runtime_error("beginProgressive() called before setScene()");
     if (settings.width == 0 || settings.height == 0)
         throw std::runtime_error("Image size must be at least 1x1");
 
     resizeFrame(settings.width, settings.height);
     m_camera = makeCamera(m_cameraDesc, settings.width, settings.height);
 
-    // Every launch traces the same number of samples so the running average stays exact.
-    const unsigned int perLaunch = std::max(1u, settings.samplesPerLaunch);
-    const unsigned int launches = std::max(1u, (settings.samplesPerPixel + perLaunch - 1) / perLaunch);
-    const unsigned int total = launches * perLaunch;
-
-    LaunchParams lp = {};
+    LaunchParams& lp = m_launch;
+    lp = {};
     lp.width = settings.width;
     lp.height = settings.height;
-    lp.samplesPerLaunch = perLaunch;
+    lp.samplesPerLaunch = std::max(1u, settings.samplesPerLaunch);
     lp.maxDepth = std::max(1u, settings.maxDepth);
     lp.maxSampleValue = settings.maxSampleValue;
     lp.background = make_float3(settings.background, settings.background, settings.background);
@@ -307,16 +303,34 @@ double Renderer::render(const RenderSettings& settings, const std::function<void
     lp.triangleMaterial = m_triangleMaterial.as<const unsigned int>();
     lp.materials = m_materials.as<const Material>();
     lp.handle = m_gasHandle;
+    lp.subframeIndex = 0;
+    m_samplesRendered = 0;
+}
+
+void Renderer::renderPass()
+{
+    if (m_launch.width == 0)
+        throw std::runtime_error("renderPass() called before beginProgressive()");
+    // Every launch traces the same number of samples, so the running average stays exact.
+    CUDA_CHECK(cudaMemcpy(m_launchParams.get(), &m_launch, sizeof(m_launch), cudaMemcpyHostToDevice));
+    OPTIX_CHECK(optixLaunch(m_pipeline, nullptr, m_launchParams.dptr(), sizeof(LaunchParams), &m_sbt,
+                            m_launch.width, m_launch.height, 1));
+    CUDA_CHECK(cudaDeviceSynchronize());
+    m_launch.subframeIndex += 1;
+    m_samplesRendered = m_launch.subframeIndex * m_launch.samplesPerLaunch;
+}
+
+double Renderer::render(const RenderSettings& settings, const std::function<void(unsigned int, unsigned int)>& progress)
+{
+    beginProgressive(settings);
+    const unsigned int perLaunch = m_launch.samplesPerLaunch;
+    const unsigned int launches = std::max(1u, (settings.samplesPerPixel + perLaunch - 1) / perLaunch);
+    const unsigned int total = launches * perLaunch;
 
     const auto start = now();
     for (unsigned int i = 0; i < launches; ++i)
     {
-        lp.subframeIndex = i;
-        CUDA_CHECK(cudaMemcpy(m_launchParams.get(), &lp, sizeof(lp), cudaMemcpyHostToDevice));
-        OPTIX_CHECK(optixLaunch(m_pipeline, nullptr, m_launchParams.dptr(), sizeof(LaunchParams), &m_sbt,
-                                settings.width, settings.height, 1));
-        CUDA_CHECK(cudaDeviceSynchronize());
-        m_samplesRendered = (i + 1) * perLaunch;
+        renderPass();
         if (progress)
             progress(m_samplesRendered, total);
     }

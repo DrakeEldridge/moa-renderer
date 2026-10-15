@@ -43,6 +43,17 @@ public:
     // Returns the render time in milliseconds.
     double render(const RenderSettings& settings, const std::function<void(unsigned int, unsigned int)>& progress);
 
+    // Interactive (progressive) rendering: beginProgressive() resets the image, then each
+    // renderPass() adds samplesPerLaunch samples per pixel. Used by the live window.
+    void beginProgressive(const RenderSettings& settings);
+    void renderPass();
+
+    // Camera used by the next beginProgressive()/render(). setScene() resets it to the scene's camera.
+    void setCamera(const CameraDesc& camera) { m_cameraDesc = camera; }
+    const CameraDesc& camera() const { return m_cameraDesc; }
+    unsigned int width() const { return m_width; }
+    unsigned int height() const { return m_height; }
+
     // Runs the OptiX AI denoiser on the current render, guided by the albedo and normal passes.
     // Returns the denoise time in milliseconds.
     double denoise();
@@ -98,6 +109,7 @@ private:
     CudaBuffer m_albedo;
     CudaBuffer m_normal;
     CudaBuffer m_launchParams;
+    LaunchParams m_launch = {};
 
     // Denoiser
     OptixDenoiser m_denoiser = nullptr;

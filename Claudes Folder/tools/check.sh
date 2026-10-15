@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Compile-check MOA Renderer in a GPU-less Linux workspace, then render the CPU mock test.
+# Also needs: apt-get install libgl-dev libglfw3-dev (for the live window code)
 # Needs: pip install --break-system-packages "nvidia-cuda-runtime-cu12==12.9.*" \
 #        "nvidia-cuda-nvcc-cu12==12.9.*" "nvidia-cuda-nvrtc-cu12==12.9.*" pillow
 # Usage: "Claudes Folder/tools/check.sh" [tall] [short] [launches] [background]
@@ -14,15 +15,23 @@ mkdir -p "$OUT/lib"
 if [ ! -f "$OPTIX_INC/optix.h" ]; then
   git clone -q --depth 1 --branch v9.1.0 https://github.com/NVIDIA/optix-dev.git "$OUT/optix-dev"
 fi
+IMGUI="$OUT/imgui-src"
+if [ ! -f "$IMGUI/imgui.h" ]; then
+  git clone -q --depth 1 --branch v1.91.9b https://github.com/ocornut/imgui.git "$IMGUI"
+fi
 ln -sf "$CUDA_PIP/cuda_runtime/lib/libcudart.so.12" "$OUT/lib/libcudart.so"
-INC=(-I"$CUDA_PIP/cuda_runtime/include" -I"$CUDA_PIP/cuda_nvcc/include" -I"$OPTIX_INC" -I"$ROOT/src" -I"$ROOT/third_party")
+INC=(-I"$CUDA_PIP/cuda_runtime/include" -I"$CUDA_PIP/cuda_nvcc/include" -I"$OPTIX_INC" -I"$ROOT/src" -I"$ROOT/third_party" -I"$IMGUI" -I"$IMGUI/backends")
+mkdir -p "$OUT/imgui"
+for f in imgui imgui_draw imgui_tables imgui_widgets backends/imgui_impl_glfw backends/imgui_impl_opengl3; do
+  o="$OUT/imgui/$(basename $f).o"; [ -f "$o" ] || g++ -std=c++17 -O1 -c "${INC[@]}" "$IMGUI/$f.cpp" -o "$o"
+done
 
 echo "== Device code (NVRTC -> PTX)"
 python3 -I "$TOOLS/nvrtc_check.py" "$ROOT/src/device/pathtracer.cu" "$OUT/pathtracer.ptx" "$OPTIX_INC" "$ROOT/src"
 echo "   launch params in PTX: $(grep -o 'params\[[0-9]*\]' "$OUT/pathtracer.ptx" | head -1)"
 
 echo "== Host code (g++)"
-g++ -std=c++17 -O2 -Wall -Wextra "${INC[@]}" "$ROOT"/src/*.cpp -L"$OUT/lib" -lcudart -ldl -o "$OUT/moa"
+g++ -std=c++17 -O2 -Wall -Wextra "${INC[@]}" "$ROOT"/src/*.cpp "$OUT"/imgui/*.o -L"$OUT/lib" -lcudart -ldl -lglfw -lGL -o "$OUT/moa"
 printf '#include "device/LaunchParams.h"\n#include <cstdio>\nint main(){std::printf("%%zu\\n",sizeof(moa::LaunchParams));}\n' > "$OUT/sz.cpp"
 g++ -std=c++17 "${INC[@]}" "$OUT/sz.cpp" -o "$OUT/sz"
 echo "   sizeof(LaunchParams) on host: $("$OUT/sz") (must match the PTX value above)"

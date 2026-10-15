@@ -4,6 +4,7 @@
 
 #include <vector_types.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,11 @@ enum class PngEncoding
     Albedo,  // linear colour in [0,1]: sRGB only
     Normal,  // unit vectors: remapped from [-1,1] to [0,1]
 };
+
+// Converts float pixels to 8-bit RGBA (alpha 255) using the given encoding. Rows stay in render
+// order (row 0 = bottom). Fast enough to run every frame in the live window.
+void encodeRgba8(const std::vector<float4>& pixels, std::vector<uint8_t>& out, PngEncoding encoding,
+                 float exposure = 1.0f);
 
 // Writes an 8-bit PNG. `pixels` is bottom-to-top (row 0 = bottom), as rendered.
 // Returns false if the file couldn't be written.
