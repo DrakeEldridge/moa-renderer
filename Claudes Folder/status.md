@@ -34,8 +34,12 @@ Follow-ups for the live window:
 - CUDA-GL interop instead of host copy if display becomes a bottleneck.
 
 **Milestone 3 (OBJ/STL loading): works on Drake's PC** (uffizi torso, 2,451,630 tris; first build took
-8.5 s to load with strtof, now from_chars: 0.5 s for a 2.4M-tri test file here). The torso loaded lying
-face down, so added Tilt X / Tilt Z / Turn sliders and +90 buttons (not yet retested).
+8.5 s to load with strtof, now from_chars: 0.5 s for a 2.4M-tri test file here). Models load in
+arbitrary orientations, so the model panel now has stacking world-axis 90 degree buttons (X/Y/Z, minus/plus;
+accumulated 3x3 matrix in CornellOptions::rotateModel, exact quarter turns), a fine Spin slider, Scale,
+and camera-relative move sliders (Left/right = -X, Down/up = Y, Near/far = Z). Rebuild happens on
+slider release. Not yet retested on Drake's PC. Later: instance transforms (IAS) so moving or rotating
+doesn't rebuild the BVH.
 Indexed geometry with per-vertex shading normals; OBJ (polygons fan-triangulated, v//vn pairs,
 negative indices, missing normals computed) and STL (binary + ASCII, vertices welded by exact
 position, so seams with tiny float differences stay split). Model auto-fits onto the box floor

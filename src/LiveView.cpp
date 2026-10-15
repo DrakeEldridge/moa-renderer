@@ -500,44 +500,59 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
                 sceneOptions.modelZUp = modelUp == 1;
                 rebuildScene = true;
             }
-            // Big meshes take a moment to rebuild, so apply these when the slider is released.
+            // Rotate: each click turns the model 90 degrees around a fixed room axis,
+            // on top of its current orientation. Click until it looks right.
+            ImGui::TextUnformatted("Rotate 90:");
+            const char* const axisNames[] = {"X", "Y", "Z"};
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                ImGui::PushID(axis);
+                if (axis > 0)
+                    ImGui::SameLine();
+                char label[16];
+                std::snprintf(label, sizeof(label), "%s -", axisNames[axis]);
+                if (ImGui::Button(label))
+                {
+                    sceneOptions.rotateModel(axis, -90.0f);
+                    rebuildScene = true;
+                }
+                ImGui::SameLine(0.0f, 2.0f);
+                std::snprintf(label, sizeof(label), "%s +", axisNames[axis]);
+                if (ImGui::Button(label))
+                {
+                    sceneOptions.rotateModel(axis, 90.0f);
+                    rebuildScene = true;
+                }
+                ImGui::PopID();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset##transform"))
+            {
+                sceneOptions = CornellOptions{sceneOptions.tallBlock, sceneOptions.shortBlock, sceneOptions.model,
+                                              sceneOptions.modelMaterial, sceneOptions.showBlocks,
+                                              sceneOptions.modelZUp};
+                modelUp = sceneOptions.modelZUp ? 1 : 0;
+                rebuildScene = true;
+            }
+
+            // Big meshes take a moment to rebuild, so sliders apply when released.
             // Ctrl+click a slider to type an exact value.
-            ImGui::SliderFloat("Tilt X", &sceneOptions.modelTiltX, -180.0f, 180.0f, "%.0f deg");
+            ImGui::SliderFloat("Spin", &sceneOptions.modelYaw, -180.0f, 180.0f, "%.0f deg");
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
-            ImGui::SliderFloat("Tilt Z", &sceneOptions.modelTiltZ, -180.0f, 180.0f, "%.0f deg");
+            ImGui::SliderFloat("Scale", &sceneOptions.modelSize, 0.2f, 5.0f, "%.2f");
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
-            ImGui::SliderFloat("Turn", &sceneOptions.modelYaw, -180.0f, 180.0f, "%.0f deg");
+            // Moves are camera-relative: the camera looks down +Z with +X on its left.
+            float moveRight = -sceneOptions.modelOffset.x;
+            float moveUp = sceneOptions.modelOffset.y;
+            float moveIn = sceneOptions.modelOffset.z;
+            if (ImGui::SliderFloat("Left / right", &moveRight, -3.0f, 3.0f, "%.2f"))
+                sceneOptions.modelOffset.x = -moveRight;
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
-            // One-click quarter turns, for models that load lying down or facing away.
-            auto quarterTurn = [](float& angle) {
-                angle += 90.0f;
-                if (angle > 180.0f)
-                    angle -= 360.0f;
-            };
-            if (ImGui::Button("X +90"))
-            {
-                quarterTurn(sceneOptions.modelTiltX);
-                rebuildScene = true;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Z +90"))
-            {
-                quarterTurn(sceneOptions.modelTiltZ);
-                rebuildScene = true;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Turn +90"))
-            {
-                quarterTurn(sceneOptions.modelYaw);
-                rebuildScene = true;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Reset##rotation"))
-            {
-                sceneOptions.modelTiltX = sceneOptions.modelTiltZ = sceneOptions.modelYaw = 0.0f;
-                rebuildScene = true;
-            }
-            ImGui::SliderFloat("Model size", &sceneOptions.modelSize, 0.5f, 5.0f, "%.2f");
+            if (ImGui::SliderFloat("Down / up", &moveUp, -2.0f, 4.0f, "%.2f"))
+                sceneOptions.modelOffset.y = moveUp;
+            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
+            if (ImGui::SliderFloat("Near / far", &moveIn, -3.0f, 3.0f, "%.2f"))
+                sceneOptions.modelOffset.z = moveIn;
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
             if (ImGui::Checkbox("Show blocks", &sceneOptions.showBlocks))
                 rebuildScene = true;

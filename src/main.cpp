@@ -113,8 +113,8 @@ bool parseArgs(int argc, char** argv, Options& o)
         else if (a == "--zup") o.scene.modelZUp = true;
         else if (a == "--blocks") o.scene.showBlocks = true;
         else if (a == "--rotate") o.scene.modelYaw = std::strtof(next(), nullptr);
-        else if (a == "--tilt-x") o.scene.modelTiltX = std::strtof(next(), nullptr);
-        else if (a == "--tilt-z") o.scene.modelTiltZ = std::strtof(next(), nullptr);
+        else if (a == "--tilt-x") o.scene.rotateModel(0, std::strtof(next(), nullptr));
+        else if (a == "--tilt-z") o.scene.rotateModel(2, std::strtof(next(), nullptr));
         else if (a == "--model-material")
         {
             const std::string name = next();

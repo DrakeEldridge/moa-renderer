@@ -77,23 +77,20 @@ void Scene::addQuad(float3 a, float3 b, float3 c, float3 d, unsigned int materia
 }
 
 void Scene::addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorCenter, float fitSize, bool zUp,
-                          float3 rotationDegrees)
+                          const float rotation[9], float spinDegrees, float3 offset)
 {
     if (mesh.positions.empty() || mesh.indices.empty())
         return;
-    const float rx = rotationDegrees.x * kPi / 180.0f;
-    const float ry = rotationDegrees.y * kPi / 180.0f;
-    const float rz = rotationDegrees.z * kPi / 180.0f;
-    const float cx = std::cos(rx), sx = std::sin(rx);
-    const float cy = std::cos(ry), sy = std::sin(ry);
-    const float cz = std::cos(rz), sz = std::sin(rz);
-    // Re-orient into this scene's Y-up space, then tilt (X, Z) and spin around the vertical axis (Y).
+    const float spin = spinDegrees * kPi / 180.0f;
+    const float cy = std::cos(spin), sy = std::sin(spin);
+    const float* r = rotation;
+    // Re-orient into this scene's Y-up space, apply the clicked rotations, then the fine spin.
     auto orient = [&](float3 v) {
         if (zUp)
             v = make_float3(v.x, v.z, -v.y);
-        v = make_float3(v.x, cx * v.y - sx * v.z, sx * v.y + cx * v.z);  // around X
-        v = make_float3(cz * v.x - sz * v.y, sz * v.x + cz * v.y, v.z);  // around Z
-        return make_float3(cy * v.x + sy * v.z, v.y, -sy * v.x + cy * v.z);  // around Y
+        v = make_float3(r[0] * v.x + r[1] * v.y + r[2] * v.z, r[3] * v.x + r[4] * v.y + r[5] * v.z,
+                        r[6] * v.x + r[7] * v.y + r[8] * v.z);
+        return make_float3(cy * v.x + sy * v.z, v.y, -sy * v.x + cy * v.z);
     };
 
     float3 lo = orient(mesh.positions[0]), hi = lo;
@@ -113,7 +110,7 @@ void Scene::addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorC
     normals.reserve(normals.size() + mesh.normals.size());
     for (size_t i = 0; i < mesh.positions.size(); ++i)
     {
-        positions.push_back(floorCenter + (orient(mesh.positions[i]) - pivot) * scale);
+        positions.push_back(floorCenter + offset + (orient(mesh.positions[i]) - pivot) * scale);
         normals.push_back(normalize(orient(mesh.normals[i])));  // uniform scale keeps normals valid
     }
     indices.reserve(indices.size() + mesh.indices.size());
@@ -197,7 +194,7 @@ Scene makeCornellBox(const CornellOptions& options)
             m.albedo = make_float3(0.8f, 0.8f, 0.8f);  // light clay
         const unsigned int modelId = s.addMaterial(m);
         s.addFittedMesh(*options.model, modelId, P(278.0f, 0.0f, 279.6f), options.modelSize, options.modelZUp,
-                        make_float3(options.modelTiltX, options.modelYaw, options.modelTiltZ));
+                        options.modelRotation, options.modelYaw, options.modelOffset);
     }
 
     s.camera.eye = P(278.0f, 273.0f, -800.0f);
@@ -205,6 +202,33 @@ Scene makeCornellBox(const CornellOptions& options)
     s.camera.up = make_float3(0.0f, 1.0f, 0.0f);
     s.camera.verticalFovDegrees = 39.3f;
     return s;
+}
+
+void CornellOptions::rotateModel(int axis, float degrees)
+{
+    // Exact values for quarter turns, so repeated clicks never drift.
+    float c, s;
+    const float q = std::fmod(degrees, 360.0f);
+    if (q == 90.0f || q == -270.0f) { c = 0.0f; s = 1.0f; }
+    else if (q == -90.0f || q == 270.0f) { c = 0.0f; s = -1.0f; }
+    else if (q == 180.0f || q == -180.0f) { c = -1.0f; s = 0.0f; }
+    else { const float a = degrees * kPi / 180.0f; c = std::cos(a); s = std::sin(a); }
+
+    float m[9];
+    if (axis == 0)
+        m[0] = 1, m[1] = 0, m[2] = 0, m[3] = 0, m[4] = c, m[5] = -s, m[6] = 0, m[7] = s, m[8] = c;
+    else if (axis == 1)
+        m[0] = c, m[1] = 0, m[2] = s, m[3] = 0, m[4] = 1, m[5] = 0, m[6] = -s, m[7] = 0, m[8] = c;
+    else
+        m[0] = c, m[1] = -s, m[2] = 0, m[3] = s, m[4] = c, m[5] = 0, m[6] = 0, m[7] = 0, m[8] = 1;
+
+    // New = m * current: the turn happens around the world axis, on top of what's already there.
+    float out[9];
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 3; ++col)
+            out[row * 3 + col] = m[row * 3 + 0] * modelRotation[0 * 3 + col] + m[row * 3 + 1] * modelRotation[1 * 3 + col] +
+                                 m[row * 3 + 2] * modelRotation[2 * 3 + col];
+    std::copy(out, out + 9, modelRotation);
 }
 
 bool parseMaterialType(const std::string& name, MaterialType& out)

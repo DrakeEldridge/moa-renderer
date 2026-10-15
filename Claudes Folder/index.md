@@ -59,3 +59,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/Scene.* (addFittedMesh rotation X, Z, Y), src/LiveView.cpp, src/main.cpp
 2026-10-16 | FIX      | OBJ load slow on Windows (8.5 s for 2.45M tris): float parsing via std::from_chars instead of strtof
                       → src/MeshLoader.cpp (parseFloat)
+2026-10-16 | FEATURE  | Model transform: stacking world-axis ±90 rotation buttons (matrix, exact), Spin, Scale, Left/right, Down/up, Near/far sliders, Reset (replaces Euler tilt sliders)
+                      → src/Scene.* (rotateModel, addFittedMesh(rotation, spin, offset)), src/LiveView.cpp

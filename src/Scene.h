@@ -48,9 +48,10 @@ struct Scene
 
     // Adds a loaded mesh, transformed so it stands on the floor at `floorCenter` and its height
     // (or largest size, if wider than tall) equals `fitSize`. zUp: the file's up axis is +Z.
-    // rotation: degrees around X, then Z, then Y (applied after the Z-up conversion).
+    // rotation: 3x3 row-major matrix applied after the Z-up conversion, then `spinDegrees` around Y.
+    // The model is fitted (stood on the floor, sized) after rotating, then moved by `offset`.
     void addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorCenter, float fitSize, bool zUp,
-                       float3 rotationDegrees);
+                       const float rotation[9], float spinDegrees, float3 offset);
 };
 
 // Options for the built-in test scene.
@@ -64,10 +65,14 @@ struct CornellOptions
     MaterialType modelMaterial = MAT_DIFFUSE;
     bool showBlocks = false;
     bool modelZUp = false;     // many STL files are Z-up
-    float modelYaw = 0.0f;     // degrees around the vertical axis (Y)
-    float modelTiltX = 0.0f;   // degrees around X (fixes models lying down)
-    float modelTiltZ = 0.0f;   // degrees around Z
+    // Orientation built from button clicks (each one turns the model around a world axis).
+    float modelRotation[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    float modelYaw = 0.0f;     // extra fine spin around the vertical axis, degrees
     float modelSize = 3.6f;    // fitted height in scene units (the box is 5.5 tall)
+    float3 modelOffset = {0.0f, 0.0f, 0.0f};  // move from the fitted spot (scene units)
+
+    // Turns the model around world axis 0 = X, 1 = Y, 2 = Z by `degrees`, on top of its current orientation.
+    void rotateModel(int axis, float degrees);
 };
 
 Scene makeCornellBox(const CornellOptions& options);
