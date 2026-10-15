@@ -4,6 +4,9 @@ _Last updated: 2026-10-16 (session 01)_
 
 ## Where we are
 
+GitHub: first commit pushed to `main` on 2026-10-16 (Claude GitHub App installed).
+
+
 **Phase 1, milestone 1: written, not yet built on Drake's PC.**
 
 The command-line renderer `moa.exe` path-traces a built-in Cornell box with OptiX 9.1 and writes
@@ -20,10 +23,9 @@ cleanly, and the CPU mock renders correct images (diffuse, mirror and glass vari
 
 ## Blockers / waiting on
 
-- Pushing to GitHub needs the Claude GitHub App installed on `DrakeEldridge/moa-renderer`
-  (github.com/apps/claude/installations/select_target). Asked Drake on 2026-10-16.
-- Drake's local folder is not a git repo yet. Once GitHub has the first commit, he can either
-  clone it into the folder or run `git init` + `git remote add` + `git pull` (walk him through it).
+- Drake's local folder holds the same files but isn't a git repo yet. Steps sent 2026-10-16:
+  `git init -b main`, `git remote add origin ...`, `git fetch origin`, `git reset origin/main`,
+  `git branch -u origin/main`. Confirm `git status` is clean next session.
 
 ## Known limitations (by design for milestone 1)
 

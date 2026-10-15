@@ -27,3 +27,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → Claudes Folder/tools/check.sh
 2026-10-16 | DOCS     | README with build/run/troubleshooting; Moa Studios logo in README (light/dark)
                       → README.md, docs/images/
+2026-10-16 | SETUP    | Claude GitHub App installed; first commit pushed to DrakeEldridge/moa-renderer main
+                      → Claudes Folder/status.md
