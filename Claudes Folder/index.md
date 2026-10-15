@@ -61,3 +61,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/MeshLoader.cpp (parseFloat)
 2026-10-16 | FEATURE  | Model transform: stacking world-axis ±90 rotation buttons (matrix, exact), Spin, Scale, Left/right, Down/up, Near/far sliders, Reset (replaces Euler tilt sliders)
                       → src/Scene.* (rotateModel, addFittedMesh(rotation, spin, offset)), src/LiveView.cpp
+2026-10-16 | BUILD    | Verified on RTX 3080: uffizi torso (2.45M tris) loads in 0.5 s, 4K live render 232 Msamples/s, denoise 40.9 ms; rotation/move/scale controls work
+                      → logs/2026-10-16_session-01.md

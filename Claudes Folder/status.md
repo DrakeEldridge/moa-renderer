@@ -38,7 +38,8 @@ Follow-ups for the live window:
 arbitrary orientations, so the model panel now has stacking world-axis 90 degree buttons (X/Y/Z, minus/plus;
 accumulated 3x3 matrix in CornellOptions::rotateModel, exact quarter turns), a fine Spin slider, Scale,
 and camera-relative move sliders (Left/right = -X, Down/up = Y, Near/far = Z). Rebuild happens on
-slider release. Not yet retested on Drake's PC. Later: instance transforms (IAS) so moving or rotating
+slider release. Tested OK on Drake's PC: torso upright at 3840x2160, load 0.5 s, 232 Msamples/s,
+denoise 40.9 ms. Later: instance transforms (IAS) so moving or rotating
 doesn't rebuild the BVH.
 Indexed geometry with per-vertex shading normals; OBJ (polygons fan-triangulated, v//vn pairs,
 negative indices, missing normals computed) and STL (binary + ASCII, vertices welded by exact
