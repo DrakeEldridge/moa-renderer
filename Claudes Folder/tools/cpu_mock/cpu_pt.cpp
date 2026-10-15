@@ -5,6 +5,7 @@
 #include "Scene.h"
 #include "ImageIO.h"
 #include <cstdio>
+#include <cstdlib>
 #include <algorithm>
 #include <vector>
 #include <thread>
@@ -49,6 +50,7 @@ void mockTrace(OptixTraversableHandle, float3 o, float3 d, float tmin, float tma
 int main(int argc, char** argv){
   using namespace moa; CornellOptions opt; const float bg = argc>4 ? (float)atof(argv[4]) : 0.0f; if(argc>2){ parseMaterialType(argv[1],opt.tallBlock); parseMaterialType(argv[2],opt.shortBlock);} 
   Mesh model; if(argc>5){ std::string err; if(!loadMesh(argv[5],model,err)){std::printf("%s\n",err.c_str()); return 1;} opt.model=&model; opt.modelMaterial=opt.tallBlock; { std::string log; opt.modelTextures=loadModelTextures(model,log); std::printf("%s", log.c_str()); } if(argc>6) opt.modelZUp=true; std::printf("model tris %zu\n", model.triangleCount()); }
+  if (const char* envPath = std::getenv("MOA_ENV")) { std::string err; opt.environment = loadHdrImage(envPath, err); if (!opt.environment) { std::printf("%s\n", err.c_str()); return 1; } opt.useEnvironment = true; }
   Scene s=makeCornellBox(opt); g_scene=&s;
   g_triIdx.resize(s.triangleCount()); for(size_t i=0;i<g_triIdx.size();++i) g_triIdx[i]=(int)i; buildBvh(0,(int)g_triIdx.size()); const unsigned W=160,H=160, spl=8, launches=argc>3?atoi(argv[3]):8;
   std::vector<float4> beauty(W*H), albedo(W*H), normal(W*H);
@@ -58,7 +60,16 @@ int main(int argc, char** argv){
   params.positions=s.positions.data(); params.normals=s.normals.data(); params.indices=s.indices.data();
   params.texcoords=s.texcoords.data(); params.tangents=s.tangents.data();
   static std::vector<cudaTextureObject_t> texIds; for(size_t i=0;i<s.textures.size();++i){ const Image& im=*s.textures[i].image; g_mockTextures.push_back({im.width,im.height,im.rgba.data(),s.textures[i].srgb}); texIds.push_back(i); }
-  if(texIds.empty()) texIds.push_back(0); params.textures=texIds.data(); params.triangleMaterial=s.triangleMaterial.data(); params.materials=s.materials.data();
+  if(texIds.empty()) texIds.push_back(0); params.textures=texIds.data();
+  params.hasQuadLight = s.hasQuadLight ? 1u : 0u;
+  static EnvironmentTables envTables;
+  if (s.environment) {
+    envTables = buildEnvironmentTables(*s.environment);
+    g_mockTextures.push_back({s.environment->width, s.environment->height, nullptr, false, s.environment->rgba.data()});
+    params.envTexture = g_mockTextures.size() - 1; params.envFunc = envTables.func.data(); params.envMarginalCdf = envTables.marginal.data();
+    params.envConditionalCdf = envTables.conditional.data(); params.envWidth = s.environment->width; params.envHeight = s.environment->height;
+    params.envFuncIntegral = envTables.funcIntegral; params.envIntensity = s.environmentIntensity; params.envRotation = s.environmentRotation * kPi / 180.0f; params.envVisible = s.environmentVisible;
+  } params.triangleMaterial=s.triangleMaterial.data(); params.materials=s.materials.data();
   for(unsigned f=0; f<launches; ++f){ params.subframeIndex=f; std::vector<std::thread> th;
     for(unsigned t=0;t<16;t++) th.emplace_back([&,t]{ for(unsigned y=t;y<H;y+=16) for(unsigned x=0;x<W;x++){ g_mock.launchIdx=make_uint3(x,y,0); __raygen__render(); } });
     for(auto& x:th) x.join(); }

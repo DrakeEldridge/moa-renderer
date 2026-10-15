@@ -16,6 +16,7 @@ struct LiveOptions
     float exposure = 1.0f;
     std::string outPrefix = "renders/live";  // where "Save images" writes
     std::string modelPath;                   // optional .obj/.stl to load at start
+    std::string environmentPath;             // optional .hdr to light the scene with
 };
 
 // Opens the window and runs until it is closed. Returns the process exit code.

@@ -69,6 +69,16 @@ UI: texture names, Use textures, Flip V, Flip green, Bump strength (material-onl
 CPU mock: tex2D mock + BVH (60k-tri bust in ~12 s). The bust loads upright, facing sideways.
 No mipmaps yet (8K textures may shimmer while moving at low spp).
 
+**Milestone 5 (HDRI lighting): written and CPU-tested with a synthetic sun+sky .hdr, not yet on Drake's PC.**
+.hdr via stb_image (EXR not yet). Float4 CUDA texture (wrap U, clamp V). Importance sampling: per-pixel
+luminance x sin(theta), marginal/conditional CDFs (buildEnvironmentTables, shared with the CPU mock),
+NEE towards the env on diffuse hits + MIS (power heuristic) with cosine bounce pdf; misses after
+mirror/glass add env fully; camera rays see it if "Show background". HDRI mode = open 60-unit grey
+floor, no walls or quad light (hasQuadLight=0); blocks/model stay. Intensity, rotation and visibility
+update without rebuild (setEnvironmentParams). envWidth>0 is the "has env" flag (not envTexture != 0).
+UI: Lighting section, drop .hdr. CLI: --hdri, --hdri-intensity, --hdri-rotate, --no-floor.
+Drake is downloading Poly Haven HDRIs into an `hdri\` folder.
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to

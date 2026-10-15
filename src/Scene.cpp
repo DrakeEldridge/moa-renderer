@@ -161,33 +161,55 @@ Scene makeCornellBox(const CornellOptions& options)
     lightMat.emission = make_float3(17.0f, 12.0f, 4.0f);
     const unsigned int lightId = s.addMaterial(lightMat);
 
-    // Room surfaces are wound to face inwards (shading flips normals anyway; this just keeps data tidy).
-    const float3 roomCenter = P(278.0f, 274.4f, 279.6f);
+    const bool hdriMode = options.useEnvironment && options.environment;
+    if (hdriMode)
+    {
+        // Open scene lit by the HDRI: just an optional large floor under the model.
+        s.hasQuadLight = false;
+        s.environment = options.environment;
+        s.environmentIntensity = options.environmentIntensity;
+        s.environmentRotation = options.environmentRotation;
+        s.environmentVisible = options.environmentVisible;
+        s.light.area = 0.0f;
+        if (options.showFloor)
+        {
+            const unsigned int floorId = s.addMaterial(diffuse(0.5f, 0.5f, 0.5f));
+            const float half = 3000.0f;
+            s.addQuad(P(278.0f - half, 0.0f, 279.6f - half), P(278.0f + half, 0.0f, 279.6f - half),
+                      P(278.0f + half, 0.0f, 279.6f + half), P(278.0f - half, 0.0f, 279.6f + half), floorId,
+                      make_float3(0.0f, 1.0f, 0.0f));
+        }
+    }
+    else
+    {
+        // Room surfaces are wound to face inwards (shading flips normals anyway; this just keeps data tidy).
+        const float3 roomCenter = P(278.0f, 274.4f, 279.6f);
 
-    // Floor, ceiling, back wall (white), left wall (red), right wall (green), as seen from the camera.
-    s.addQuad(P(552.8f, 0.0f, 0.0f), P(0.0f, 0.0f, 0.0f), P(0.0f, 0.0f, 559.2f), P(549.6f, 0.0f, 559.2f),
-              white, make_float3(0.0f, 1.0f, 0.0f));
-    s.addQuad(P(556.0f, 548.8f, 0.0f), P(556.0f, 548.8f, 559.2f), P(0.0f, 548.8f, 559.2f), P(0.0f, 548.8f, 0.0f),
-              white, make_float3(0.0f, -1.0f, 0.0f));
-    s.addQuad(P(549.6f, 0.0f, 559.2f), P(0.0f, 0.0f, 559.2f), P(0.0f, 548.8f, 559.2f), P(556.0f, 548.8f, 559.2f),
-              white, make_float3(0.0f, 0.0f, -1.0f));
-    s.addQuad(P(552.8f, 0.0f, 0.0f), P(549.6f, 0.0f, 559.2f), P(556.0f, 548.8f, 559.2f), P(556.0f, 548.8f, 0.0f),
-              red, roomCenter - P(552.8f, 274.4f, 279.6f));
-    s.addQuad(P(0.0f, 0.0f, 559.2f), P(0.0f, 0.0f, 0.0f), P(0.0f, 548.8f, 0.0f), P(0.0f, 548.8f, 559.2f),
-              green, roomCenter - P(0.0f, 274.4f, 279.6f));
+        // Floor, ceiling, back wall (white), left wall (red), right wall (green), as seen from the camera.
+        s.addQuad(P(552.8f, 0.0f, 0.0f), P(0.0f, 0.0f, 0.0f), P(0.0f, 0.0f, 559.2f), P(549.6f, 0.0f, 559.2f),
+                  white, make_float3(0.0f, 1.0f, 0.0f));
+        s.addQuad(P(556.0f, 548.8f, 0.0f), P(556.0f, 548.8f, 559.2f), P(0.0f, 548.8f, 559.2f), P(0.0f, 548.8f, 0.0f),
+                  white, make_float3(0.0f, -1.0f, 0.0f));
+        s.addQuad(P(549.6f, 0.0f, 559.2f), P(0.0f, 0.0f, 559.2f), P(0.0f, 548.8f, 559.2f), P(556.0f, 548.8f, 559.2f),
+                  white, make_float3(0.0f, 0.0f, -1.0f));
+        s.addQuad(P(552.8f, 0.0f, 0.0f), P(549.6f, 0.0f, 559.2f), P(556.0f, 548.8f, 559.2f), P(556.0f, 548.8f, 0.0f),
+                  red, roomCenter - P(552.8f, 274.4f, 279.6f));
+        s.addQuad(P(0.0f, 0.0f, 559.2f), P(0.0f, 0.0f, 0.0f), P(0.0f, 548.8f, 0.0f), P(0.0f, 548.8f, 559.2f),
+                  green, roomCenter - P(0.0f, 274.4f, 279.6f));
 
-    // Ceiling light, just below the ceiling, emitting downwards.
-    const float3 l0 = P(343.0f, 548.7f, 227.0f);
-    const float3 l1 = P(213.0f, 548.7f, 227.0f);
-    const float3 l2 = P(213.0f, 548.7f, 332.0f);
-    const float3 l3 = P(343.0f, 548.7f, 332.0f);
-    s.addQuad(l0, l1, l2, l3, lightId, make_float3(0.0f, -1.0f, 0.0f));
-    s.light.corner = l0;
-    s.light.edge1 = l1 - l0;
-    s.light.edge2 = l3 - l0;
-    s.light.normal = make_float3(0.0f, -1.0f, 0.0f);
-    s.light.emission = lightMat.emission;
-    s.light.area = length(cross(s.light.edge1, s.light.edge2));
+        // Ceiling light, just below the ceiling, emitting downwards.
+        const float3 l0 = P(343.0f, 548.7f, 227.0f);
+        const float3 l1 = P(213.0f, 548.7f, 227.0f);
+        const float3 l2 = P(213.0f, 548.7f, 332.0f);
+        const float3 l3 = P(343.0f, 548.7f, 332.0f);
+        s.addQuad(l0, l1, l2, l3, lightId, make_float3(0.0f, -1.0f, 0.0f));
+        s.light.corner = l0;
+        s.light.edge1 = l1 - l0;
+        s.light.edge2 = l3 - l0;
+        s.light.normal = make_float3(0.0f, -1.0f, 0.0f);
+        s.light.emission = lightMat.emission;
+        s.light.area = length(cross(s.light.edge1, s.light.edge2));
+    }
 
     // The two blocks.
     const float3 shortBase[4] = {P(130.0f, 0.0f, 65.0f), P(82.0f, 0.0f, 225.0f), P(240.0f, 0.0f, 272.0f),
@@ -226,6 +248,40 @@ Scene makeCornellBox(const CornellOptions& options)
     s.camera.up = make_float3(0.0f, 1.0f, 0.0f);
     s.camera.verticalFovDegrees = 39.3f;
     return s;
+}
+
+EnvironmentTables buildEnvironmentTables(const HdrImage& image)
+{
+    const unsigned int W = static_cast<unsigned int>(image.width);
+    const unsigned int H = static_cast<unsigned int>(image.height);
+    EnvironmentTables t;
+    t.func.resize(static_cast<size_t>(W) * H);
+    t.conditional.resize(static_cast<size_t>(H) * (W + 1));
+    t.marginal.resize(H + 1);
+    t.marginal[0] = 0.0f;
+    for (unsigned int y = 0; y < H; ++y)
+    {
+        // Rows near the poles cover less of the sphere, hence sin(theta).
+        const float sinTheta = std::sin(kPi * (y + 0.5f) / H);
+        float* cdf = &t.conditional[static_cast<size_t>(y) * (W + 1)];
+        cdf[0] = 0.0f;
+        for (unsigned int x = 0; x < W; ++x)
+        {
+            const float* p = &image.rgba[(static_cast<size_t>(y) * W + x) * 4];
+            const float lum = std::max(0.0f, 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2]);
+            const float f = (std::isfinite(lum) ? lum : 0.0f) * sinTheta;
+            t.func[static_cast<size_t>(y) * W + x] = f;
+            cdf[x + 1] = cdf[x] + f / W;
+        }
+        const float rowIntegral = cdf[W];
+        for (unsigned int x = 1; x <= W; ++x)
+            cdf[x] = rowIntegral > 0.0f ? cdf[x] / rowIntegral : static_cast<float>(x) / W;
+        t.marginal[y + 1] = t.marginal[y] + rowIntegral / H;
+    }
+    t.funcIntegral = t.marginal[H];
+    for (unsigned int y = 1; y <= H; ++y)
+        t.marginal[y] = t.funcIntegral > 0.0f ? t.marginal[y] / t.funcIntegral : static_cast<float>(y) / H;
+    return t;
 }
 
 void CornellOptions::rotateModel(int axis, float degrees)

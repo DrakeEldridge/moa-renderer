@@ -19,6 +19,20 @@ struct Image
 
 using ImagePtr = std::shared_ptr<const Image>;
 
+// High dynamic range image (e.g. an HDRI environment), linear float RGBA.
+struct HdrImage
+{
+    int width = 0;
+    int height = 0;
+    std::vector<float> rgba;  // row 0 = top, 4 floats per pixel
+    std::string name;
+};
+
+using HdrImagePtr = std::shared_ptr<const HdrImage>;
+
+// Loads a Radiance .hdr file. Returns nullptr and sets `error` on failure.
+HdrImagePtr loadHdrImage(const std::string& path, std::string& error);
+
 // Loads an image file. Returns nullptr and sets `error` on failure.
 ImagePtr loadImage(const std::string& path, std::string& error);
 

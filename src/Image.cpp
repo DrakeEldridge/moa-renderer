@@ -16,7 +16,6 @@
 #pragma GCC diagnostic ignored "-Wsign-compare"
 #endif
 #define STB_IMAGE_IMPLEMENTATION
-#define STBI_NO_HDR  // HDR/EXR images come later, through a different loader
 #include "stb/stb_image.h"
 #if defined(_MSC_VER)
 #pragma warning(pop)
@@ -26,23 +25,61 @@
 
 namespace moa {
 
-ImagePtr loadImage(const std::string& path, std::string& error)
+namespace {
+
+// Reads the whole file ourselves so Unicode paths work on Windows, then images decode from memory.
+bool readBytes(const std::string& path, std::vector<unsigned char>& bytes, std::string& error)
 {
-    // Read the bytes ourselves so Unicode paths work on Windows, then decode from memory.
     std::ifstream f(std::filesystem::u8path(path), std::ios::binary | std::ios::ate);
     if (!f)
     {
         error = "Couldn't open " + path;
-        return nullptr;
+        return false;
     }
     const std::streamsize size = f.tellg();
     f.seekg(0);
-    std::vector<unsigned char> bytes(static_cast<size_t>(size));
+    bytes.resize(static_cast<size_t>(size));
     if (size <= 0 || !f.read(reinterpret_cast<char*>(bytes.data()), size))
     {
         error = "Couldn't read " + path;
+        return false;
+    }
+    return true;
+}
+
+}  // namespace
+
+HdrImagePtr loadHdrImage(const std::string& path, std::string& error)
+{
+    std::vector<unsigned char> bytes;
+    if (!readBytes(path, bytes, error))
+        return nullptr;
+    if (!stbi_is_hdr_from_memory(bytes.data(), static_cast<int>(bytes.size())))
+    {
+        error = "Not a Radiance .hdr file (EXR isn't supported yet; download the HDR version)";
         return nullptr;
     }
+    int w = 0, h = 0, channels = 0;
+    float* pixels = stbi_loadf_from_memory(bytes.data(), static_cast<int>(bytes.size()), &w, &h, &channels, 4);
+    if (!pixels)
+    {
+        error = std::string("Couldn't decode HDR image: ") + stbi_failure_reason();
+        return nullptr;
+    }
+    auto image = std::make_shared<HdrImage>();
+    image->width = w;
+    image->height = h;
+    image->rgba.assign(pixels, pixels + static_cast<size_t>(w) * h * 4);
+    image->name = std::filesystem::u8path(path).filename().string();
+    stbi_image_free(pixels);
+    return image;
+}
+
+ImagePtr loadImage(const std::string& path, std::string& error)
+{
+    std::vector<unsigned char> bytes;
+    if (!readBytes(path, bytes, error))
+        return nullptr;
 
     int w = 0, h = 0, channels = 0;
     unsigned char* pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()), &w, &h, &channels, 4);

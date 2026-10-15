@@ -24,7 +24,7 @@ inline float2 optixGetTriangleBarycentrics(){ return g_mock.bary; }
 inline float3 optixGetWorldRayOrigin(){ return g_mock.o; }
 inline float3 optixGetWorldRayDirection(){ return g_mock.d; }
 // Textures: cudaTextureObject_t is an index into this list (filled by the harness).
-struct MockTexture { int w, h; const unsigned char* rgba; bool srgb; };
+struct MockTexture { int w, h; const unsigned char* rgba; bool srgb; const float* rgbaf = nullptr; };
 extern std::vector<MockTexture> g_mockTextures;
 template <class T> T tex2D(cudaTextureObject_t, float, float);
 template <> inline float4 tex2D<float4>(cudaTextureObject_t t, float u, float v)
@@ -33,6 +33,7 @@ template <> inline float4 tex2D<float4>(cudaTextureObject_t t, float u, float v)
     u -= std::floor(u); v -= std::floor(v);  // wrap
     int x = (int)(u * m.w); if (x >= m.w) x = m.w - 1;
     int y = (int)(v * m.h); if (y >= m.h) y = m.h - 1;
+    if (m.rgbaf) { const float* f = m.rgbaf + ((size_t)y * m.w + x) * 4; return make_float4(f[0], f[1], f[2], f[3]); }
     const unsigned char* p = m.rgba + ((size_t)y * m.w + x) * 4;
     float c[4];
     for (int i = 0; i < 4; ++i) {

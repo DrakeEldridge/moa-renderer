@@ -39,6 +39,13 @@ struct Scene
     std::vector<Material> materials;
     std::vector<SceneTexture> textures;
     QuadLight light{};
+    bool hasQuadLight = true;
+
+    // Environment light (HDRI). No image = no environment.
+    HdrImagePtr environment;
+    float environmentIntensity = 1.0f;
+    float environmentRotation = 0.0f;  // degrees
+    bool environmentVisible = true;
     CameraDesc camera{};
 
     size_t triangleCount() const { return triangleMaterial.size(); }
@@ -73,6 +80,16 @@ struct Scene
                        const float rotation[9], float spinDegrees, float3 offset);
 };
 
+// Tables for importance-sampling an HDRI (brightness x sin(theta) per pixel, then row/column CDFs).
+struct EnvironmentTables
+{
+    std::vector<float> func;         // width x height
+    std::vector<float> marginal;     // height + 1
+    std::vector<float> conditional;  // height x (width + 1)
+    float funcIntegral = 0.0f;
+};
+EnvironmentTables buildEnvironmentTables(const HdrImage& image);
+
 // Options for the built-in test scene.
 struct CornellOptions
 {
@@ -92,6 +109,14 @@ struct CornellOptions
 
     // Turns the model around world axis 0 = X, 1 = Y, 2 = Z by `degrees`, on top of its current orientation.
     void rotateModel(int axis, float degrees);
+
+    // HDRI lighting: replaces the Cornell box with an open scene lit by the environment image.
+    HdrImagePtr environment;
+    bool useEnvironment = false;
+    float environmentIntensity = 1.0f;
+    float environmentRotation = 0.0f;  // degrees
+    bool environmentVisible = true;    // show the HDRI behind the model
+    bool showFloor = true;             // grey ground plane in HDRI mode
 
     // Model textures (optional) and how to read them.
     ModelTextures modelTextures;

@@ -81,6 +81,7 @@ Renderer::~Renderer()
 {
     for (auto& entry : m_textureCache)
         releaseTexture(entry.second);
+    uploadEnvironment(nullptr);
     // Release GPU memory before tearing down OptiX objects.
     m_denoiserState.release();
     m_denoiserScratch.release();
@@ -238,6 +239,9 @@ void Renderer::setScene(const Scene& scene)
     m_tangents.upload(scene.tangents);
     m_indices.upload(scene.indices);
     uploadTextures(scene);
+    uploadEnvironment(scene.environment);
+    setEnvironmentParams(scene.environmentIntensity, scene.environmentRotation, scene.environmentVisible);
+    m_hasQuadLight = scene.hasQuadLight;
     m_triangleMaterial.upload(scene.triangleMaterial);
     m_materials.upload(scene.materials);
     m_cameraDesc = scene.camera;
@@ -249,6 +253,51 @@ void Renderer::updateMaterials(const Scene& scene)
 {
     m_materials.upload(scene.materials);
     m_launch.materials = m_materials.as<const Material>();
+}
+
+void Renderer::setEnvironmentParams(float intensity, float rotationDegrees, bool visible)
+{
+    m_envIntensity = intensity;
+    m_envRotation = rotationDegrees * kPi / 180.0f;
+    m_envVisible = visible;
+}
+
+void Renderer::uploadEnvironment(const HdrImagePtr& image)
+{
+    if (image == m_envImage)
+        return;  // unchanged (the 4K tables take a moment to build, so don't redo them)
+    if (m_envTexture)
+        cudaDestroyTextureObject(m_envTexture);
+    if (m_envArray)
+        cudaFreeArray(m_envArray);
+    m_envTexture = 0;
+    m_envArray = nullptr;
+    m_envImage = image;
+    if (!image)
+        return;
+
+    const unsigned int W = static_cast<unsigned int>(image->width);
+    const unsigned int H = static_cast<unsigned int>(image->height);
+    const cudaChannelFormatDesc format = cudaCreateChannelDesc<float4>();
+    CUDA_CHECK(cudaMallocArray(&m_envArray, &format, W, H));
+    CUDA_CHECK(cudaMemcpy2DToArray(m_envArray, 0, 0, image->rgba.data(), W * sizeof(float4), W * sizeof(float4), H,
+                                   cudaMemcpyHostToDevice));
+    cudaResourceDesc res = {};
+    res.resType = cudaResourceTypeArray;
+    res.res.array.array = m_envArray;
+    cudaTextureDesc desc = {};
+    desc.addressMode[0] = cudaAddressModeWrap;   // around the horizon
+    desc.addressMode[1] = cudaAddressModeClamp;  // top and bottom poles
+    desc.filterMode = cudaFilterModeLinear;
+    desc.readMode = cudaReadModeElementType;
+    desc.normalizedCoords = 1;
+    CUDA_CHECK(cudaCreateTextureObject(&m_envTexture, &res, &desc, nullptr));
+
+    const EnvironmentTables tables = buildEnvironmentTables(*image);
+    m_envFuncIntegral = tables.funcIntegral;
+    m_envFunc.upload(tables.func);
+    m_envMarginal.upload(tables.marginal);
+    m_envConditional.upload(tables.conditional);
 }
 
 void Renderer::releaseTexture(GpuTexture& texture)
@@ -377,6 +426,17 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.normal = m_normal.as<float4>();
     lp.camera = m_camera;
     lp.light = m_light;
+    lp.hasQuadLight = m_hasQuadLight ? 1u : 0u;
+    lp.envTexture = m_envTexture;
+    lp.envFunc = m_envFunc.as<const float>();
+    lp.envMarginalCdf = m_envMarginal.as<const float>();
+    lp.envConditionalCdf = m_envConditional.as<const float>();
+    lp.envWidth = m_envImage ? static_cast<unsigned int>(m_envImage->width) : 0u;
+    lp.envHeight = m_envImage ? static_cast<unsigned int>(m_envImage->height) : 0u;
+    lp.envFuncIntegral = m_envFuncIntegral;
+    lp.envIntensity = m_envIntensity;
+    lp.envRotation = m_envRotation;
+    lp.envVisible = m_envVisible ? 1u : 0u;
     lp.positions = m_positions.as<const float3>();
     lp.normals = m_normals.as<const float3>();
     lp.texcoords = m_texcoords.as<const float2>();

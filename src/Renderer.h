@@ -44,6 +44,9 @@ public:
     // Faster than setScene() when only material settings changed (same geometry and textures).
     void updateMaterials(const Scene& scene);
 
+    // Changes HDRI intensity/rotation/visibility without re-uploading anything.
+    void setEnvironmentParams(float intensity, float rotationDegrees, bool visible);
+
     // Progressive render. Calls `progress(samplesDone, samplesTotal)` after each launch.
     // Returns the render time in milliseconds.
     double render(const RenderSettings& settings, const std::function<void(unsigned int, unsigned int)>& progress);
@@ -115,6 +118,20 @@ private:
     };
     std::map<std::pair<const Image*, bool>, GpuTexture> m_textureCache;
     CudaBuffer m_textureObjects;  // cudaTextureObject_t per scene texture index
+
+    // Environment (HDRI): texture plus the tables used to sample bright areas.
+    HdrImagePtr m_envImage;
+    cudaArray_t m_envArray = nullptr;
+    cudaTextureObject_t m_envTexture = 0;
+    CudaBuffer m_envFunc;
+    CudaBuffer m_envMarginal;
+    CudaBuffer m_envConditional;
+    float m_envFuncIntegral = 0.0f;
+    float m_envIntensity = 1.0f;
+    float m_envRotation = 0.0f;  // radians
+    bool m_envVisible = true;
+    bool m_hasQuadLight = true;
+    void uploadEnvironment(const HdrImagePtr& image);
     void uploadTextures(const Scene& scene);
     void releaseTexture(GpuTexture& texture);
     OptixTraversableHandle m_gasHandle = 0;

@@ -71,3 +71,7 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → logs/2026-10-16_session-01.md
 2026-10-16 | FEATURE  | Reset bump button; right-click any slider to reset to default (resetOnRightClick helper)
                       → src/LiveView.cpp
+2026-10-16 | FEATURE  | Milestone 5: HDRI environment lighting (.hdr), importance sampling + MIS, open-floor HDRI mode, Lighting panel, drag-and-drop, CLI
+                      → src/Image.* (loadHdrImage), src/Scene.* (buildEnvironmentTables, hdri mode), src/Renderer.* (uploadEnvironment, setEnvironmentParams), src/device/*, src/LiveView.cpp, src/main.cpp
+2026-10-16 | BUG      | CPU mock: env texture got id 0, which the GPU code treated as "no environment" -> black render. Use envWidth > 0 as the flag instead
+                      → src/device/pathtracer.cu

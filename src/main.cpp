@@ -40,6 +40,7 @@ struct Options
     bool verbose = false;
     bool batch = false;  // render once and save, instead of opening the live window
     std::string model;   // optional .obj/.stl
+    std::string hdri;    // optional .hdr environment
 };
 
 void printUsage()
@@ -64,6 +65,10 @@ void printUsage()
         "  --tilt-z DEG         tilt the model around Z\n"
         "  --blocks             keep the two blocks when a model is loaded\n"
         "  --no-textures        ignore the model's textures (clay render)\n"
+        "  --hdri FILE          light the scene with an .hdr environment (open floor, no box)\n"
+        "  --hdri-intensity X   HDRI brightness (default 1)\n"
+        "  --hdri-rotate DEG    turn the HDRI around the vertical axis\n"
+        "  --no-floor           no ground plane in HDRI mode\n"
         "  --flip-v             flip texture V (for textures authored upside down)\n"
         "  --exposure X         exposure multiplier for the PNGs (default 1.0)\n"
         "  --clamp X            caustic firefly clamp, 0 = off (default 4)\n"
@@ -115,6 +120,10 @@ bool parseArgs(int argc, char** argv, Options& o)
         else if (a == "--zup") o.scene.modelZUp = true;
         else if (a == "--blocks") o.scene.showBlocks = true;
         else if (a == "--no-textures") o.scene.useTextures = false;
+        else if (a == "--hdri") o.hdri = next();
+        else if (a == "--hdri-intensity") o.scene.environmentIntensity = std::strtof(next(), nullptr);
+        else if (a == "--hdri-rotate") o.scene.environmentRotation = std::strtof(next(), nullptr);
+        else if (a == "--no-floor") o.scene.showFloor = false;
         else if (a == "--flip-v") o.scene.flipV = true;
         else if (a == "--rotate") o.scene.modelYaw = std::strtof(next(), nullptr);
         else if (a == "--tilt-x") o.scene.rotateModel(0, std::strtof(next(), nullptr));
@@ -202,6 +211,7 @@ int main(int argc, char** argv)
             live.exposure = o.exposure;
             live.outPrefix = o.out == "renders/cornell" ? "renders/live" : o.out;
             live.modelPath = o.model;
+            live.environmentPath = o.hdri;
             std::printf("Opening the live render window...\n");
             return moa::runLiveView(renderer, live);
         }
@@ -218,6 +228,16 @@ int main(int argc, char** argv)
             std::string textureLog;
             o.scene.modelTextures = moa::loadModelTextures(model, textureLog);
             std::printf("%s", textureLog.c_str());
+        }
+        if (!o.hdri.empty())
+        {
+            std::string error;
+            o.scene.environment = moa::loadHdrImage(o.hdri, error);
+            if (!o.scene.environment)
+                throw std::runtime_error(error);
+            o.scene.useEnvironment = true;
+            std::printf("HDRI: %s (%d x %d)\n", o.scene.environment->name.c_str(), o.scene.environment->width,
+                        o.scene.environment->height);
         }
         const moa::Scene scene = moa::makeCornellBox(o.scene);
         renderer.setScene(scene);

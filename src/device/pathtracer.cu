@@ -153,6 +153,87 @@ __forceinline__ __device__ float3 applyNormalMap(const Material& m, const HitInf
     return dot(mapped, hit.normal) > 0.05f ? mapped : N;
 }
 
+// ---- Environment (HDRI) lighting -------------------------------------------------------------
+// Equirectangular mapping: u wraps around the horizon, v runs from straight up (0) to down (1).
+
+__forceinline__ __device__ float2 envDirectionToUv(float3 d)
+{
+    float u = 0.5f + (atan2f(d.x, -d.z) - params.envRotation) * (0.5f * kInvPi);
+    u -= floorf(u);
+    const float v = acosf(clampf(d.y, -1.0f, 1.0f)) * kInvPi;
+    return make_float2(u, v);
+}
+
+__forceinline__ __device__ float3 envUvToDirection(float u, float v)
+{
+    const float phi = (u - 0.5f) * 2.0f * kPi + params.envRotation;
+    const float theta = v * kPi;
+    const float st = sinf(theta);
+    return make_float3(st * sinf(phi), cosf(theta), -st * cosf(phi));
+}
+
+__forceinline__ __device__ float3 envRadiance(float3 d)
+{
+    const float2 uv = envDirectionToUv(d);
+    const float4 c = tex2D<float4>(params.envTexture, uv.x, uv.y);
+    return make_float3(c.x, c.y, c.z) * params.envIntensity;
+}
+
+// Probability (per unit solid angle) that sampleEnvironment() picks direction d.
+__forceinline__ __device__ float envPdf(float3 d)
+{
+    const float2 uv = envDirectionToUv(d);
+    const unsigned int xi = static_cast<unsigned int>(uv.x * params.envWidth);
+    const unsigned int yi = static_cast<unsigned int>(uv.y * params.envHeight);
+    const unsigned int x = xi < params.envWidth ? xi : params.envWidth - 1;
+    const unsigned int y = yi < params.envHeight ? yi : params.envHeight - 1;
+    const float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - d.y * d.y));
+    if (sinTheta <= 1e-6f || params.envFuncIntegral <= 0.0f)
+        return 0.0f;
+    const float pdfUv = params.envFunc[y * params.envWidth + x] / params.envFuncIntegral;
+    return pdfUv / (2.0f * kPi * kPi * sinTheta);
+}
+
+// Finds the last index i in cdf[0..count] with cdf[i] <= value (cdf is increasing, cdf[0] = 0).
+__forceinline__ __device__ unsigned int findInterval(const float* cdf, unsigned int count, float value)
+{
+    unsigned int lo = 0, hi = count;  // answer in [lo, hi)
+    while (hi - lo > 1)
+    {
+        const unsigned int mid = (lo + hi) / 2;
+        if (cdf[mid] <= value)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+// Picks a direction towards the environment, favouring bright areas (sun, windows, softboxes).
+__forceinline__ __device__ float3 sampleEnvironment(float r1, float r2, float& pdf)
+{
+    const unsigned int W = params.envWidth, H = params.envHeight;
+    const unsigned int y = findInterval(params.envMarginalCdf, H, r1);
+    const float m0 = params.envMarginalCdf[y], m1 = params.envMarginalCdf[y + 1];
+    const float dv = m1 > m0 ? (r1 - m0) / (m1 - m0) : 0.5f;
+    const float* row = params.envConditionalCdf + static_cast<size_t>(y) * (W + 1);
+    const unsigned int x = findInterval(row, W, r2);
+    const float c0 = row[x], c1 = row[x + 1];
+    const float du = c1 > c0 ? (r2 - c0) / (c1 - c0) : 0.5f;
+    const float u = (x + du) / W, v = (y + dv) / H;
+    const float3 d = envUvToDirection(u, v);
+    const float sinTheta = sinf(v * kPi);
+    pdf = sinTheta > 1e-6f ? (params.envFunc[y * W + x] / params.envFuncIntegral) / (2.0f * kPi * kPi * sinTheta) : 0.0f;
+    return d;
+}
+
+// Power heuristic for combining two sampling strategies (multiple importance sampling).
+__forceinline__ __device__ float misWeight(float pdfA, float pdfB)
+{
+    const float a = pdfA * pdfA, b = pdfB * pdfB;
+    return a + b > 0.0f ? a / (a + b) : 0.0f;
+}
+
 __forceinline__ __device__ bool isEmissive(const Material& m)
 {
     return m.emission.x > 0.0f || m.emission.y > 0.0f || m.emission.z > 0.0f;
@@ -187,6 +268,8 @@ extern "C" __global__ void __raygen__render()
         float3 normalAov = make_float3(0.0f, 0.0f, 0.0f);
         bool countEmission = true;  // camera rays and specular bounces see lights directly
         bool afterDiffuse = false;  // has the path bounced off a diffuse surface yet?
+        float lastBsdfPdf = 0.0f;   // pdf of the last diffuse bounce direction (for MIS with the HDRI)
+        bool lastWasDiffuse = false;
 
         for (unsigned int depth = 0; depth < params.maxDepth; ++depth)
         {
@@ -195,9 +278,28 @@ extern "C" __global__ void __raygen__render()
             traceRadiance(origin, direction, hit);
             if (!hit.hit)
             {
-                // Uniform background light. It isn't sampled by NEE, so every path that escapes
-                // picks it up here (diffuse bounces included) and the estimate stays correct.
-                radiance += throughput * params.background;
+                if (params.envWidth > 0)
+                {
+                    const float3 le = envRadiance(direction);
+                    if (depth == 0)
+                    {
+                        if (params.envVisible)
+                            radiance += le;
+                    }
+                    else if (lastWasDiffuse)
+                    {
+                        // This direction could also have been picked by HDRI sampling: weight it.
+                        radiance += throughput * le * misWeight(lastBsdfPdf, envPdf(direction));
+                    }
+                    else
+                        radiance += throughput * le;  // seen through a mirror or glass
+                }
+                else
+                {
+                    // Uniform background light. It isn't sampled by NEE, so every path that escapes
+                    // picks it up here (diffuse bounces included) and the estimate stays correct.
+                    radiance += throughput * params.background;
+                }
                 break;
             }
 
@@ -226,14 +328,35 @@ extern "C" __global__ void __raygen__render()
             {
                 // Lights only emit from their front side and don't reflect in this version.
                 if (countEmission && frontFace)
-                    {
+                {
                     const float3 e = throughput * m.emission;
                     radiance += afterDiffuse ? clampCaustic(e) : e;
                 }
                 break;
             }
 
+            lastWasDiffuse = false;
             if (m.type == MAT_DIFFUSE)
+            {
+                // Next-event estimation towards the HDRI, combined with bounce sampling via MIS.
+                if (params.envWidth > 0)
+                {
+                    float pdfLight = 0.0f;
+                    const float3 l = sampleEnvironment(rnd(seed), rnd(seed), pdfLight);
+                    const float cosSurface = dot(n, l);
+                    if (pdfLight > 0.0f && cosSurface > 0.0f && dot(ng, l) > 0.0f)
+                    {
+                        if (traceShadow(hit.position + ng * kRayEpsilon, l, kRayTMax))
+                        {
+                            const float pdfBsdf = cosSurface * kInvPi;
+                            const float3 le = envRadiance(l);
+                            radiance += throughput * albedo * le *
+                                        (kInvPi * cosSurface / pdfLight * misWeight(pdfLight, pdfBsdf));
+                        }
+                    }
+                }
+            }
+            if (m.type == MAT_DIFFUSE && params.hasQuadLight)
             {
                 // Next-event estimation: pick a point on the light and test if it is visible.
                 const float3 lightPoint = light.corner + light.edge1 * rnd(seed) + light.edge2 * rnd(seed);
@@ -253,7 +376,9 @@ extern "C" __global__ void __raygen__render()
                         radiance += throughput * albedo * light.emission * (kInvPi * g * light.area);
                     }
                 }
-
+            }
+            if (m.type == MAT_DIFFUSE)
+            {
                 // Continue the path with a cosine-weighted bounce. The cosine and pi cancel
                 // against the pdf, leaving just the albedo.
                 direction = sampleCosineHemisphere(n, rnd(seed), rnd(seed));
@@ -261,6 +386,10 @@ extern "C" __global__ void __raygen__render()
                 throughput *= albedo;
                 countEmission = false;  // direct light was already counted by NEE
                 afterDiffuse = true;
+                lastWasDiffuse = true;
+                lastBsdfPdf = fmaxf(dot(n, direction), 0.0f) * kInvPi;
+                if (dot(ng, direction) <= 0.0f)
+                    break;  // bent (normal-mapped) normal sent the bounce into the surface
             }
             else if (m.type == MAT_MIRROR)
             {

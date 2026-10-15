@@ -24,6 +24,7 @@ cleaning it up as it goes. A command-line batch mode is still available.
 - Materials: diffuse, mirror, glass (with Fresnel and refraction)
 - OBJ and STL model loading (ASCII and binary STL), smooth normals, auto-fit into the scene
 - Colour textures and normal maps (JPG, PNG, TGA, BMP), found from the .mtl file or next to the model
+- HDRI environment lighting (.hdr) with importance sampling, so sunny HDRIs render cleanly
 - Progressive rendering (the image improves with every pass)
 - Render passes: beauty, albedo, normals
 - OptiX AI denoiser, guided by the albedo and normal passes
@@ -70,6 +71,11 @@ Double-click `live.bat` (or run `build\Release\moa.exe`).
 `live.bat --model models\yourmodel.obj`. It's placed on the floor of the box and scaled to fit;
 the Model section of the panel changes its material (clay, mirror, glass), up axis (many STL files
 are Z-up), rotation, position and size.
+
+**HDRI lighting:** drag a `.hdr` file onto the window (or start with `live.bat --hdri hdri\studio.hdr`).
+The Cornell box is replaced by an open grey floor lit by the HDRI. The Lighting section sets its
+intensity and rotation, whether it shows behind the model, and the floor. Untick "Use HDRI" to go
+back to the box. Poly Haven (polyhaven.com) has free HDRIs: download the HDR format, not EXR.
 
 **Textures:** a colour texture and normal map are picked up automatically from the model's `.mtl`
 file, or from images next to the model whose names start with the model's name (normal maps are

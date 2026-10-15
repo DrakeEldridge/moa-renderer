@@ -9,6 +9,7 @@
 
 #include "ImageIO.h"
 #include "MeshLoader.h"
+#include "Image.h"
 #include "device/vec_math.h"
 
 #include <imgui.h>
@@ -18,6 +19,7 @@
 #include <GLFW/glfw3.h>  // also brings in the system OpenGL header
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -105,6 +107,14 @@ float3 sceneCenter(const Scene& scene)
         hi = make_float3(std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z));
     }
     return (lo + hi) * 0.5f;
+}
+
+bool isHdrFile(const std::string& path)
+{
+    std::string ext = std::filesystem::u8path(path).extension().string();
+    for (char& c : ext)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".hdr";
 }
 
 // Files dropped onto the window, collected by the GLFW callback and handled in the main loop.
@@ -286,6 +296,14 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
 
     Mesh model;
     std::string modelStatus = "Drag an .obj or .stl file onto the window to load it.";
+    std::string environmentStatus = "Drag an .hdr file onto the window to light the scene with it.";
+    if (!options.environmentPath.empty())
+    {
+        std::string error;
+        sceneOptions.environment = loadHdrImage(options.environmentPath, error);
+        sceneOptions.useEnvironment = sceneOptions.environment != nullptr;
+        environmentStatus = sceneOptions.environment ? sceneOptions.environment->name : "Couldn't load HDRI: " + error;
+    }
     int modelMaterial = static_cast<int>(sceneOptions.modelMaterial);
     int modelUp = sceneOptions.modelZUp ? 1 : 0;
     sceneOptions.model = nullptr;
@@ -504,13 +522,61 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             restart = true;
         }
 
-        ImGui::SeparatorText("Model");
         bool rebuildScene = false;
         bool materialsChanged = false;
+
+        ImGui::SeparatorText("Lighting");
+        ImGui::TextWrapped("%s", environmentStatus.c_str());
+        if (sceneOptions.environment)
+        {
+            if (ImGui::Checkbox("Use HDRI", &sceneOptions.useEnvironment))
+                rebuildScene = true;  // switches between the Cornell box and the open floor
+            if (sceneOptions.useEnvironment)
+            {
+                bool envChanged = false;
+                envChanged |= ImGui::SliderFloat("Intensity", &sceneOptions.environmentIntensity, 0.01f, 20.0f, "%.2f",
+                                                 ImGuiSliderFlags_Logarithmic);
+                envChanged |= resetOnRightClick(sceneOptions.environmentIntensity, 1.0f);
+                envChanged |= ImGui::SliderFloat("Rotation", &sceneOptions.environmentRotation, -180.0f, 180.0f, "%.0f deg");
+                envChanged |= resetOnRightClick(sceneOptions.environmentRotation, 0.0f);
+                envChanged |= ImGui::Checkbox("Show background", &sceneOptions.environmentVisible);
+                ImGui::SameLine();
+                if (ImGui::Checkbox("Floor", &sceneOptions.showFloor))
+                    rebuildScene = true;
+                if (envChanged)
+                {
+                    renderer.setEnvironmentParams(sceneOptions.environmentIntensity, sceneOptions.environmentRotation,
+                                                  sceneOptions.environmentVisible);
+                    restart = true;
+                }
+            }
+        }
+
+        ImGui::SeparatorText("Model");
         std::vector<std::string> dropped;
         dropped.swap(g_droppedFiles);
         for (const std::string& path : dropped)
         {
+            if (isHdrFile(path))
+            {
+                std::printf("Loading HDRI %s ...\n", path.c_str());
+                std::string error;
+                const auto t0 = Clock::now();
+                HdrImagePtr env = loadHdrImage(path, error);
+                if (!env)
+                    environmentStatus = "Couldn't load HDRI: " + error;
+                else
+                {
+                    sceneOptions.environment = env;
+                    sceneOptions.useEnvironment = true;
+                    char buf[256];
+                    std::snprintf(buf, sizeof(buf), "%s (%d x %d)", env->name.c_str(), env->width, env->height);
+                    environmentStatus = buf;
+                    std::printf("HDRI loaded in %.1f s\n", msBetween(t0, Clock::now()) / 1000.0);
+                    rebuildScene = true;
+                }
+                continue;
+            }
             if (isImageFile(path))
             {
                 // An image dropped onto a loaded model: use it as its normal map or colour texture.

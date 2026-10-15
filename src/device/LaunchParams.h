@@ -79,6 +79,19 @@ struct LaunchParams
 
     Camera camera;
     QuadLight light;
+    unsigned int hasQuadLight;  // 0 when the scene is lit only by the environment
+
+    // Environment (HDRI) light. envWidth == 0 means no environment image.
+    cudaTextureObject_t envTexture;
+    const float* envFunc;            // sampling weight per pixel: luminance x sin(theta)
+    const float* envMarginalCdf;     // envHeight + 1 entries, rows
+    const float* envConditionalCdf;  // envHeight x (envWidth + 1) entries, columns per row
+    unsigned int envWidth;
+    unsigned int envHeight;
+    float envFuncIntegral;           // average of envFunc (normalises the pdf)
+    float envIntensity;
+    float envRotation;               // radians around the vertical axis
+    unsigned int envVisible;         // show the HDRI to camera rays (otherwise black)
 
     // Scene geometry: indexed triangles with a shading normal per vertex.
     const float3* positions;
