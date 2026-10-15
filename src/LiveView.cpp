@@ -427,7 +427,7 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         ImGui::Checkbox("Denoise while moving", &denoiseWhileMoving);
 
         ImGui::SeparatorText("Resolution");
-        if (ImGui::BeginCombo("Size", kResolutions[resolutionPreset].name))
+        if (ImGui::BeginCombo("Render size", kResolutions[resolutionPreset].name))
         {
             for (int i = 0; i < kResolutionCount; ++i)
                 if (ImGui::Selectable(kResolutions[i].name, i == resolutionPreset))
@@ -501,9 +501,43 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
                 rebuildScene = true;
             }
             // Big meshes take a moment to rebuild, so apply these when the slider is released.
-            ImGui::SliderFloat("Rotate", &sceneOptions.modelYaw, -180.0f, 180.0f, "%.0f deg");
+            // Ctrl+click a slider to type an exact value.
+            ImGui::SliderFloat("Tilt X", &sceneOptions.modelTiltX, -180.0f, 180.0f, "%.0f deg");
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
-            ImGui::SliderFloat("Size", &sceneOptions.modelSize, 0.5f, 5.0f, "%.2f");
+            ImGui::SliderFloat("Tilt Z", &sceneOptions.modelTiltZ, -180.0f, 180.0f, "%.0f deg");
+            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
+            ImGui::SliderFloat("Turn", &sceneOptions.modelYaw, -180.0f, 180.0f, "%.0f deg");
+            rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
+            // One-click quarter turns, for models that load lying down or facing away.
+            auto quarterTurn = [](float& angle) {
+                angle += 90.0f;
+                if (angle > 180.0f)
+                    angle -= 360.0f;
+            };
+            if (ImGui::Button("X +90"))
+            {
+                quarterTurn(sceneOptions.modelTiltX);
+                rebuildScene = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Z +90"))
+            {
+                quarterTurn(sceneOptions.modelTiltZ);
+                rebuildScene = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Turn +90"))
+            {
+                quarterTurn(sceneOptions.modelYaw);
+                rebuildScene = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset##rotation"))
+            {
+                sceneOptions.modelTiltX = sceneOptions.modelTiltZ = sceneOptions.modelYaw = 0.0f;
+                rebuildScene = true;
+            }
+            ImGui::SliderFloat("Model size", &sceneOptions.modelSize, 0.5f, 5.0f, "%.2f");
             rebuildScene |= ImGui::IsItemDeactivatedAfterEdit();
             if (ImGui::Checkbox("Show blocks", &sceneOptions.showBlocks))
                 rebuildScene = true;

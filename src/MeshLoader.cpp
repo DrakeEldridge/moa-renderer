@@ -5,6 +5,7 @@
 #include "device/vec_math.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -55,6 +56,21 @@ const char* nextLine(const char* p, const char* end)
     return p < end ? p + 1 : end;
 }
 
+// Fast float parser (std::from_chars is several times quicker than strtof on big files).
+// Skips leading spaces, reads one number, advances p. Returns 0 if there's no number.
+float parseFloat(const char*& p, const char* end)
+{
+    while (p < end && (*p == ' ' || *p == '\t'))
+        ++p;
+    if (p < end && *p == '+')
+        ++p;  // from_chars doesn't accept a leading '+'
+    float value = 0.0f;
+    const auto result = std::from_chars(p, end, value);
+    if (result.ec == std::errc())
+        p = result.ptr;
+    return value;
+}
+
 // OBJ indices are 1-based; negative values count back from the end.
 bool resolveIndex(long idx, size_t count, uint32_t& out)
 {
@@ -86,20 +102,20 @@ bool loadObj(const std::vector<char>& data, Mesh& mesh, std::string& error)
         p = nextLine(p, end);
         if (line[0] == 'v' && (line[1] == ' ' || line[1] == '\t'))
         {
-            char* q = nullptr;
+            const char* q = line + 2;
             float3 v;
-            v.x = std::strtof(line + 2, &q);
-            v.y = std::strtof(q, &q);
-            v.z = std::strtof(q, &q);
+            v.x = parseFloat(q, end);
+            v.y = parseFloat(q, end);
+            v.z = parseFloat(q, end);
             filePositions.push_back(v);
         }
         else if (line[0] == 'v' && line[1] == 'n' && (line[2] == ' ' || line[2] == '\t'))
         {
-            char* q = nullptr;
+            const char* q = line + 3;
             float3 n;
-            n.x = std::strtof(line + 3, &q);
-            n.y = std::strtof(q, &q);
-            n.z = std::strtof(q, &q);
+            n.x = parseFloat(q, end);
+            n.y = parseFloat(q, end);
+            n.z = parseFloat(q, end);
             fileNormals.push_back(n);
         }
         else if (line[0] == 'f' && (line[1] == ' ' || line[1] == '\t'))

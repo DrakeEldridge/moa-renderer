@@ -48,8 +48,9 @@ struct Scene
 
     // Adds a loaded mesh, transformed so it stands on the floor at `floorCenter` and its height
     // (or largest size, if wider than tall) equals `fitSize`. zUp: the file's up axis is +Z.
+    // rotation: degrees around X, then Z, then Y (applied after the Z-up conversion).
     void addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorCenter, float fitSize, bool zUp,
-                       float yawDegrees);
+                       float3 rotationDegrees);
 };
 
 // Options for the built-in test scene.
@@ -63,7 +64,9 @@ struct CornellOptions
     MaterialType modelMaterial = MAT_DIFFUSE;
     bool showBlocks = false;
     bool modelZUp = false;     // many STL files are Z-up
-    float modelYaw = 0.0f;     // degrees around the vertical axis
+    float modelYaw = 0.0f;     // degrees around the vertical axis (Y)
+    float modelTiltX = 0.0f;   // degrees around X (fixes models lying down)
+    float modelTiltZ = 0.0f;   // degrees around Z
     float modelSize = 3.6f;    // fitted height in scene units (the box is 5.5 tall)
 };
 

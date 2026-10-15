@@ -53,3 +53,9 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/MeshLoader.*, src/Scene.* (addFittedMesh, indexed addQuad), src/device/pathtracer.cu (ng vs shading n), src/Renderer.cpp (index buffer), src/LiveView.cpp, src/main.cpp
 2026-10-16 | BUILD    | CPU mock updated for indices + barycentrics; check.sh takes an optional model path; loader tested on generated OBJ (quads/no normals, v//vn) and STL (binary/ascii, Z-up)
                       → Claudes Folder/tools/
+2026-10-16 | FIX      | ImGui ID conflict: two widgets labelled "Size" (resolution combo + model slider) -> "Render size" / "Model size"
+                      → src/LiveView.cpp
+2026-10-16 | FEATURE  | Model orientation: Tilt X, Tilt Z, Turn sliders + X/Z/Turn +90 buttons, Reset; CLI --tilt-x/--tilt-z
+                      → src/Scene.* (addFittedMesh rotation X, Z, Y), src/LiveView.cpp, src/main.cpp
+2026-10-16 | FIX      | OBJ load slow on Windows (8.5 s for 2.45M tris): float parsing via std::from_chars instead of strtof
+                      → src/MeshLoader.cpp (parseFloat)

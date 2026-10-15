@@ -77,17 +77,23 @@ void Scene::addQuad(float3 a, float3 b, float3 c, float3 d, unsigned int materia
 }
 
 void Scene::addFittedMesh(const Mesh& mesh, unsigned int material, float3 floorCenter, float fitSize, bool zUp,
-                          float yawDegrees)
+                          float3 rotationDegrees)
 {
     if (mesh.positions.empty() || mesh.indices.empty())
         return;
-    const float yaw = yawDegrees * kPi / 180.0f;
-    const float cy = std::cos(yaw), sy = std::sin(yaw);
-    // Re-orient into this scene's Y-up space, then spin around the vertical axis.
+    const float rx = rotationDegrees.x * kPi / 180.0f;
+    const float ry = rotationDegrees.y * kPi / 180.0f;
+    const float rz = rotationDegrees.z * kPi / 180.0f;
+    const float cx = std::cos(rx), sx = std::sin(rx);
+    const float cy = std::cos(ry), sy = std::sin(ry);
+    const float cz = std::cos(rz), sz = std::sin(rz);
+    // Re-orient into this scene's Y-up space, then tilt (X, Z) and spin around the vertical axis (Y).
     auto orient = [&](float3 v) {
         if (zUp)
             v = make_float3(v.x, v.z, -v.y);
-        return make_float3(cy * v.x + sy * v.z, v.y, -sy * v.x + cy * v.z);
+        v = make_float3(v.x, cx * v.y - sx * v.z, sx * v.y + cx * v.z);  // around X
+        v = make_float3(cz * v.x - sz * v.y, sz * v.x + cz * v.y, v.z);  // around Z
+        return make_float3(cy * v.x + sy * v.z, v.y, -sy * v.x + cy * v.z);  // around Y
     };
 
     float3 lo = orient(mesh.positions[0]), hi = lo;
@@ -191,7 +197,7 @@ Scene makeCornellBox(const CornellOptions& options)
             m.albedo = make_float3(0.8f, 0.8f, 0.8f);  // light clay
         const unsigned int modelId = s.addMaterial(m);
         s.addFittedMesh(*options.model, modelId, P(278.0f, 0.0f, 279.6f), options.modelSize, options.modelZUp,
-                        options.modelYaw);
+                        make_float3(options.modelTiltX, options.modelYaw, options.modelTiltZ));
     }
 
     s.camera.eye = P(278.0f, 273.0f, -800.0f);

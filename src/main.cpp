@@ -60,6 +60,8 @@ void printUsage()
         "  --model-material M   model material: diffuse, mirror or glass (default diffuse)\n"
         "  --zup                the model file is Z-up (common for STL)\n"
         "  --rotate DEG         turn the model around the vertical axis\n"
+        "  --tilt-x DEG         tilt the model around X (e.g. 90 or -90 to stand it up)\n"
+        "  --tilt-z DEG         tilt the model around Z\n"
         "  --blocks             keep the two blocks when a model is loaded\n"
         "  --exposure X         exposure multiplier for the PNGs (default 1.0)\n"
         "  --clamp X            caustic firefly clamp, 0 = off (default 4)\n"
@@ -111,6 +113,8 @@ bool parseArgs(int argc, char** argv, Options& o)
         else if (a == "--zup") o.scene.modelZUp = true;
         else if (a == "--blocks") o.scene.showBlocks = true;
         else if (a == "--rotate") o.scene.modelYaw = std::strtof(next(), nullptr);
+        else if (a == "--tilt-x") o.scene.modelTiltX = std::strtof(next(), nullptr);
+        else if (a == "--tilt-z") o.scene.modelTiltZ = std::strtof(next(), nullptr);
         else if (a == "--model-material")
         {
             const std::string name = next();
