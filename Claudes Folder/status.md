@@ -33,7 +33,14 @@ Follow-ups for the live window:
   CPU encode scales with pixel count).
 - CUDA-GL interop instead of host copy if display becomes a bottleneck.
 
-Next milestone: OBJ loading. Drake will download high-poly OBJs into `models\` (git-ignored) (first version: auto-fit into the Cornell box, one clay/mirror/glass material, smooth normals; textures via .mtl after). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
+Next milestone: OBJ loading. Test models are in Drake's `models\` folder (git-ignored):
+- `uffizi-torso-5.obj` (93 MB, high-poly, no textures): first clay/mirror/glass test.
+- `MCh_S_12_Rzezba_Popiersie_Rozy_Loewenfeld.OBJ` (3.8 MB, uppercase .OBJ extension) with
+  `..._Loewenfeld.jpg` and `..._Loewenfeld_.png` (16 MB / 7.7 MB): texture step. Check which is colour
+  and which is a normal/other map; there may be no .mtl, so allow choosing textures manually.
+- `33 - Leeds University - Augustus.stl` (164 MB): STL is a trivial format, worth supporting alongside OBJ.
+- `Classical_Healer_Bust_-_Trellis_2_vs_SupaVoxel.usdz`: wait for USD support (Phase 2).
+Plan: first version auto-fits the model into the Cornell box (first version: auto-fit into the Cornell box, one clay/mirror/glass material, smooth normals; textures via .mtl after). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
 ## Blockers / waiting on
 
