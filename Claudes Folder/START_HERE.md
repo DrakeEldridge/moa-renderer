@@ -48,6 +48,7 @@ Index tags: `FEATURE`, `FIX`, `BUG`, `DECISION`, `FAILED`, `BUILD`, `DOCS`, `SET
   Terminal at "click" tier: Claude can double-click `build.bat` / `run.bat` and read the console,
   but can't type. Read render outputs with the file bridge (device_stage_files) rather than screenshots.
   Never click inside a running console window: Windows "Select" mode pauses it.
+  The MOA window itself needs its own grant: resolve `i:\\documents\\projects\\moa renderer\\build\\release\\moa.exe` (tier full).
 
 ## Big decisions so far (details in the design doc)
 

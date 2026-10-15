@@ -7,6 +7,8 @@ _Last updated: 2026-10-16 (session 01)_
 GitHub: first commit pushed to `main` on 2026-10-16 (Claude GitHub App installed).
 
 
+**Milestone 2 (live window) also done, see below.**
+
 **Phase 1, milestone 1: DONE and verified on Drake's RTX 3080 (2026-10-16).**
 
 First build succeeded with no errors (one harmless MSVC warning, since fixed). Render result:
@@ -19,27 +21,16 @@ cleanly, and the CPU mock renders correct images (diffuse, mirror and glass vari
 
 ## Next steps
 
-**Milestone 2: live render window (Drake chose this on 2026-10-16).** Goal: the Redshift
-RenderView feel. Open a window, watch the image clean up progressively, move the camera and see
-it restart instantly.
+**Milestone 2 (live window): DONE and working on Drake's PC (2026-10-16).** Built first time;
+Drake flew the camera himself. Live speed ~147 Msamples/s, denoise ~8 ms at window size.
 
-Plan:
-1. Window + display: GLFW and Dear ImGui fetched with CMake FetchContent from GitHub (no vcpkg yet).
-   OpenGL texture blit of the beauty buffer (start with a host copy and glTexSubImage2D; CUDA-GL
-   interop later if needed).
-2. Render loop: one OptiX launch per frame (small spl), accumulate, display every frame. Reset
-   accumulation on any change. Denoise the displayed frame every N frames or once the camera stops.
-3. Camera: Houdini-style controls (Alt or Space + LMB tumble, MMB pan, RMB / wheel dolly). Also
-   accept Maya-style Alt combos. Orbit around a pivot (default: scene centre).
-4. Fast interaction: quarter resolution while dragging, full resolution when still (later: AI 2x upscale).
-5. ImGui panel (Redshift-like): samples target, bounces, clamp, exposure, background, denoise
-   toggle, AOV switcher (beauty / denoised / albedo / normal), block material dropdowns, render
-   stats (spp, samples/s), "Save image" button.
-6. Keep batch mode: `moa.exe --batch ...` = today's command-line render (run.bat uses it).
-7. Test via computer use: Claude runs build.bat, then the window. Computer use is click-only on
-   terminals; the MOA window itself may need its own approval to drag the camera.
+Follow-ups for the live window:
+- Panel text looks tiny on Drake's large TV monitor: add auto UI scale (glfwGetWindowContentScale)
+  and a UI-size slider. (Asked Drake whether he wants it.)
+- Quarter-resolution while dragging (not done yet), then AI 2x upscale.
+- CUDA-GL interop instead of host copy if display becomes a bottleneck.
 
-After that: OBJ loading, then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
+Then: OBJ loading, then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
 ## Blockers / waiting on
 

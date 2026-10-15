@@ -39,3 +39,7 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → Claudes Folder/START_HERE.md
 2026-10-16 | DECISION | Milestone 2 = live render window (GLFW + ImGui via FetchContent, progressive display, Houdini-style camera, batch mode kept). Plan in status.md
                       → Claudes Folder/status.md
+2026-10-16 | FEATURE  | Milestone 2 live window (GLFW 3.4 + ImGui 1.91.9b): progressive view, orbit camera, settings panel, save; batch via --batch. Works on Drake's PC (~147 Msamples/s live)
+                      → src/LiveView.*, src/Renderer.* (beginProgressive/renderPass), src/ImageIO.* (encodeRgba8), CMakeLists.txt, live.bat
+2026-10-16 | SETUP    | Computer use: moa.exe must be granted separately (resolve by full exe path, tier full) to see/drive the window
+                      → Claudes Folder/START_HERE.md
