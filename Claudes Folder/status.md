@@ -25,16 +25,15 @@ cleanly, and the CPU mock renders correct images (diffuse, mirror and glass vari
 Drake flew the camera himself. Live speed ~147 Msamples/s, denoise ~8 ms at window size.
 
 Follow-ups for the live window:
-- UI scale added (auto from Windows scaling or monitor height/1080, plus "UI size" slider). Not yet
-  tested on Drake's PC: he needs `git pull` + build.bat.
+- UI scale added (auto from Windows scaling or monitor height/1080, plus "UI size" slider). Tested OK.
 - Resolution dropdown: Window full / 1/2 / 1/4, fixed presets (HD, Full HD, QHD, 4K, squares,
   portrait) and Custom; fixed sizes letterboxed. Default Window 1/2 on big screens. Half res while
-  dragging, added after Drake found the 2x-UI window laggy on his 4K TV. Untested on his PC yet.
+  dragging, added after Drake found the 2x-UI window laggy on his 4K TV. Tested OK ("works perfectly").
   Next speedups: AI 2x upscale for the low-res frames; CUDA-GL interop (the per-frame host copy +
   CPU encode scales with pixel count).
 - CUDA-GL interop instead of host copy if display becomes a bottleneck.
 
-Next milestone: OBJ loading. Drake will download a high-poly OBJ into `models\` (first version: auto-fit into the Cornell box, one clay/mirror/glass material, smooth normals; textures via .mtl after). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
+Next milestone: OBJ loading. Drake will download high-poly OBJs into `models\` (git-ignored) (first version: auto-fit into the Cornell box, one clay/mirror/glass material, smooth normals; textures via .mtl after). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
 ## Blockers / waiting on
 

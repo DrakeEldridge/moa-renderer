@@ -14,3 +14,6 @@ Desktop.ini
 # Local convenience shortcuts
 *.lnk
 Claudes Folder/ClaudeMemoryWorkflow.txt
+
+# Test models (large, often third-party licensed)
+/models/
