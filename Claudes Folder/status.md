@@ -95,6 +95,12 @@ Drake wants MOA running inside Houdini before more materials/lights. Plan:
    builds shaders with existing Houdini nodes. Then milestone 6 materials (roughness/metal/coat) and
    more lights, driven from Houdini.
 No Houdini in the cloud workspace: testing happens on Drake's PC (him or computer use).
+
+Also wanted (added to the design doc, "Batch rendering and render farms"): batch render inside each
+plugin, husk support, and a headless `moa-render` (USD + frame range -> multi-layer EXR, no window/host
+licence) with farm-manager support (Deadline/OpenCue/Tractor/HQueue/TOPs), frame splitting across PCs,
+later one-frame splitting by averaging different-seed renders, Linux nodes. Design the engine library
+split so it runs headless from day one (no GLFW/ImGui dependency in moa_core).
 Hydra delegate code can be compile-checked here against pip `usd-core` headers if they match.
 
 ## Blockers / waiting on
