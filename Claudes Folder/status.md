@@ -27,10 +27,13 @@ Drake flew the camera himself. Live speed ~147 Msamples/s, denoise ~8 ms at wind
 Follow-ups for the live window:
 - UI scale added (auto from Windows scaling or monitor height/1080, plus "UI size" slider). Not yet
   tested on Drake's PC: he needs `git pull` + build.bat.
-- Quarter-resolution while dragging (not done yet), then AI 2x upscale.
+- Render scale slider (default 1/uiScale, so 4K windows render ~1080p-sized) + half res while
+  dragging, added after Drake found the 2x-UI window laggy on his 4K TV. Untested on his PC yet.
+  Next speedups: AI 2x upscale for the low-res frames; CUDA-GL interop (the per-frame host copy +
+  CPU encode scales with pixel count).
 - CUDA-GL interop instead of host copy if display becomes a bottleneck.
 
-Next milestone: OBJ loading (Drake asked how to prepare a model, 2026-10-16). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
+Next milestone: OBJ loading. Drake will download a high-poly OBJ into `models\` (first version: auto-fit into the Cornell box, one clay/mirror/glass material, smooth normals; textures via .mtl after). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
 ## Blockers / waiting on
 

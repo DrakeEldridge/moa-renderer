@@ -223,6 +223,11 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
     double samplesTotal = 0.0;
     int dragButton = -1;
     std::string saveMessage;
+    // Render resolution relative to the window. Starts so big-screen windows render about as
+    // many pixels as a 1080p one; halved again while the camera moves (Redshift-style).
+    float renderScale = clampf(1.0f / ctx.uiScale, 0.25f, 1.0f);
+    bool lowResWhileMoving = true;
+    bool wasMoving = false;
 
     std::vector<float4> pixels;
     std::vector<uint8_t> rgba;
@@ -239,10 +244,6 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         const float panelWidth = kPanelWidth * ctx.uiScale;
         const float viewW = std::max(64.0f, io.DisplaySize.x - panelWidth);
         const float viewH = std::max(64.0f, io.DisplaySize.y);
-        const unsigned int renderW = static_cast<unsigned int>(viewW * io.DisplayFramebufferScale.x);
-        const unsigned int renderH = static_cast<unsigned int>(viewH * io.DisplayFramebufferScale.y);
-        if (renderW != renderer.width() || renderH != renderer.height())
-            restart = true;
 
         // --- Camera input on the render view ---
         bool moving = false;
@@ -283,6 +284,18 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
             restart = true;
         }
 
+        // Treat the camera as "moving" for the whole drag, so resolution doesn't flicker
+        // between frames where the mouse happens not to move.
+        const bool interacting = moving || dragButton >= 0;
+        const float scale = renderScale * ((lowResWhileMoving && interacting) ? 0.5f : 1.0f);
+        const unsigned int renderW = std::max(32u, static_cast<unsigned int>(viewW * io.DisplayFramebufferScale.x * scale));
+        const unsigned int renderH = std::max(32u, static_cast<unsigned int>(viewH * io.DisplayFramebufferScale.y * scale));
+        if (renderW != renderer.width() || renderH != renderer.height())
+            restart = true;
+        if (wasMoving && !interacting)
+            restart = true;  // drag finished: re-render at full quality
+        wasMoving = interacting;
+
         // --- Settings panel ---
         ImGui::SetNextWindowPos(ImVec2(viewW, 0.0f));
         ImGui::SetNextWindowSize(ImVec2(panelWidth, viewH));
@@ -312,6 +325,11 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
                 view = VIEW_BEAUTY;
         }
         ImGui::Checkbox("Denoise while moving", &denoiseWhileMoving);
+
+        ImGui::SeparatorText("Resolution");
+        if (ImGui::SliderFloat("Render scale", &renderScale, 0.25f, 1.0f, "%.2f"))
+            restart = true;
+        ImGui::Checkbox("Half res while moving", &lowResWhileMoving);
 
         ImGui::SeparatorText("Sampling");
         if (ImGui::SliderInt("Samples", &targetSpp, 1, 8192, "%d", ImGuiSliderFlags_Logarithmic))

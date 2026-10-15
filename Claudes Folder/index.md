@@ -45,3 +45,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → Claudes Folder/START_HERE.md
 2026-10-16 | FEATURE  | Live window UI scaling: auto (content scale, or monitor height/1080 for 4K at 100%) + "UI size" slider
                       → src/LiveView.cpp
+2026-10-16 | FIX      | Live window laggy at 2x UI on 4K (≈4.7 MP render): added render scale (default 1/uiScale) + half res while dragging, full-res restart on release
+                      → src/LiveView.cpp
