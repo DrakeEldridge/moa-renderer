@@ -83,6 +83,20 @@ update without rebuild (setEnvironmentParams). envWidth>0 is the "has env" flag 
 UI: Lighting section, drop .hdr. CLI: --hdri, --hdri-intensity, --hdri-rotate, --no-floor.
 Drake is downloading Poly Haven HDRIs into an `hdri\` folder.
 
+## NEXT SESSION: Houdini first (Drake's decision, 2026-10-16 05:34)
+
+Drake wants MOA running inside Houdini before more materials/lights. Plan:
+1. Split the engine out of moa.exe into a library (moa_core) shared by the live window and plugins.
+2. Hydra render delegate (HdMoa) built against Houdini FX 20.5.445's own USD (HDK in
+   `C:\Program Files\Side Effects Software\Houdini 20.5.445\toolkit`; check which USD/Python/MSVC
+   versions it ships). Goal: "MOA" in the Solaris viewport renderer dropdown, live progressive render.
+3. Render settings exposed on Houdini's Render Settings LOP; final renders via husk.
+4. Materials: read Houdini's MaterialX nodes (standard_surface) + UsdPreviewSurface first, so Drake
+   builds shaders with existing Houdini nodes. Then milestone 6 materials (roughness/metal/coat) and
+   more lights, driven from Houdini.
+No Houdini in the cloud workspace: testing happens on Drake's PC (him or computer use).
+Hydra delegate code can be compile-checked here against pip `usd-core` headers if they match.
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to
