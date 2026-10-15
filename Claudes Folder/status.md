@@ -25,12 +25,12 @@ cleanly, and the CPU mock renders correct images (diffuse, mirror and glass vari
 Drake flew the camera himself. Live speed ~147 Msamples/s, denoise ~8 ms at window size.
 
 Follow-ups for the live window:
-- Panel text looks tiny on Drake's large TV monitor: add auto UI scale (glfwGetWindowContentScale)
-  and a UI-size slider. (Asked Drake whether he wants it.)
+- UI scale added (auto from Windows scaling or monitor height/1080, plus "UI size" slider). Not yet
+  tested on Drake's PC: he needs `git pull` + build.bat.
 - Quarter-resolution while dragging (not done yet), then AI 2x upscale.
 - CUDA-GL interop instead of host copy if display becomes a bottleneck.
 
-Then: OBJ loading, then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
+Next milestone: OBJ loading (Drake asked how to prepare a model, 2026-10-16). Then USD/Alembic (Phase 2 groundwork), then EXR and more AOVs.
 
 ## Blockers / waiting on
 

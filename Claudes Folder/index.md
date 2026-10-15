@@ -43,3 +43,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → src/LiveView.*, src/Renderer.* (beginProgressive/renderPass), src/ImageIO.* (encodeRgba8), CMakeLists.txt, live.bat
 2026-10-16 | SETUP    | Computer use: moa.exe must be granted separately (resolve by full exe path, tier full) to see/drive the window
                       → Claudes Folder/START_HERE.md
+2026-10-16 | FEATURE  | Live window UI scaling: auto (content scale, or monitor height/1080 for 4K at 100%) + "UI size" slider
+                      → src/LiveView.cpp

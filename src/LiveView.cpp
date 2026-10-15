@@ -33,7 +33,7 @@ namespace moa {
 
 namespace {
 
-constexpr float kPanelWidth = 340.0f;
+constexpr float kPanelWidth = 340.0f;  // at UI scale 1
 
 using Clock = std::chrono::steady_clock;
 
@@ -111,6 +111,8 @@ struct WindowContext
 {
     GLFWwindow* window = nullptr;
     GLuint texture = 0;
+    float uiScale = 1.0f;
+    ImGuiStyle baseStyle;
 
     WindowContext()
     {
@@ -119,7 +121,19 @@ struct WindowContext
             throw std::runtime_error("Couldn't initialise GLFW (window system)");
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-        window = glfwCreateWindow(1600, 960, "MOA Renderer", nullptr, nullptr);
+        // Pick a UI scale: Windows display scaling if set, otherwise based on monitor size
+        // (big 4K screens at 100% scaling otherwise get tiny text).
+        if (GLFWmonitor* monitor = glfwGetPrimaryMonitor())
+        {
+            float xs = 1.0f, ys = 1.0f;
+            glfwGetMonitorContentScale(monitor, &xs, &ys);
+            uiScale = xs;
+            if (const GLFWvidmode* mode = glfwGetVideoMode(monitor); mode && xs <= 1.0f)
+                uiScale = std::max(1.0f, mode->height / 1080.0f);
+        }
+        uiScale = clampf(uiScale, 1.0f, 3.0f);
+        window = glfwCreateWindow(static_cast<int>(1600 * uiScale), static_cast<int>(960 * uiScale), "MOA Renderer",
+                                  nullptr, nullptr);
         if (!window)
         {
             glfwTerminate();
@@ -132,6 +146,8 @@ struct WindowContext
         ImGui::CreateContext();
         ImGui::GetIO().IniFilename = nullptr;  // don't litter imgui.ini files
         ImGui::StyleColorsDark();
+        baseStyle = ImGui::GetStyle();
+        applyUiScale(uiScale);
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -141,6 +157,14 @@ struct WindowContext
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+
+    void applyUiScale(float scale)
+    {
+        uiScale = scale;
+        ImGui::GetStyle() = baseStyle;
+        ImGui::GetStyle().ScaleAllSizes(scale);
+        ImGui::GetIO().FontGlobalScale = scale;
     }
 
     ~WindowContext()
@@ -212,7 +236,8 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         ImGuiIO& io = ImGui::GetIO();
 
         // Layout: render view on the left, settings panel on the right.
-        const float viewW = std::max(64.0f, io.DisplaySize.x - kPanelWidth);
+        const float panelWidth = kPanelWidth * ctx.uiScale;
+        const float viewW = std::max(64.0f, io.DisplaySize.x - panelWidth);
         const float viewH = std::max(64.0f, io.DisplaySize.y);
         const unsigned int renderW = static_cast<unsigned int>(viewW * io.DisplayFramebufferScale.x);
         const unsigned int renderH = static_cast<unsigned int>(viewH * io.DisplayFramebufferScale.y);
@@ -260,7 +285,7 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
 
         // --- Settings panel ---
         ImGui::SetNextWindowPos(ImVec2(viewW, 0.0f));
-        ImGui::SetNextWindowSize(ImVec2(kPanelWidth, viewH));
+        ImGui::SetNextWindowSize(ImVec2(panelWidth, viewH));
         ImGui::Begin("MOA Renderer", nullptr,
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 
@@ -347,6 +372,11 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         }
         if (!saveMessage.empty())
             ImGui::TextWrapped("%s", saveMessage.c_str());
+
+        ImGui::SeparatorText("Interface");
+        float uiSize = ctx.uiScale;
+        if (ImGui::SliderFloat("UI size", &uiSize, 1.0f, 3.0f, "%.2f"))
+            ctx.applyUiScale(uiSize);
 
         ImGui::SeparatorText("Controls");
         ImGui::TextWrapped("Left drag: tumble\nMiddle drag: pan\nRight drag: dolly\nWheel: dolly\nF: reset camera");
