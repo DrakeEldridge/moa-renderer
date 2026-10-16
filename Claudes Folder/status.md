@@ -160,7 +160,7 @@ Comp-first workflow: request passes from the Nuke node live (render setup update
 preview quality, final farm render reads the Nuke script and renders exactly the passes it uses.
 Parallel pipelines: renders latest USD department layers; Link node shows/pins layer versions, flags new publishes.
 Send to review: button in render view/farm/Link -> review movie with burn-ins posted as a version (Flow
-Production Tracking ex-ShotGrid, ftrack, Kitsu, Frame.io; Slack/Discord/Teams webhooks); farm auto-dailies; Python hooks.
+Production Tracking ex-ShotGrid, ftrack, Kitsu, Frame.io, Trello cards; Slack/Discord/Teams webhooks); farm auto-dailies; Python hooks.
 
 ## Blockers / waiting on
 
