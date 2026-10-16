@@ -26,11 +26,11 @@ if errorlevel 1 goto :fail
 echo.
 echo === Build succeeded: build\Release\moa.exe ===
 echo Run run.bat to render the test scene.
-pause
+if not defined MOA_NO_PAUSE pause
 exit /b 0
 
 :fail
 echo.
 echo === Build FAILED. Copy the messages above and send them to Claude. ===
-pause
+if not defined MOA_NO_PAUSE pause
 exit /b 1
