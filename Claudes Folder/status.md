@@ -129,6 +129,13 @@ file signed with Moa Studios' private key (owner, updates-until = purchase + 3 y
 offline with embedded public key (works forever offline); updater and installer refuse releases dated
 after updates-until. Static site on free hosting (Cloudflare Pages/Netlify/GitHub Pages), not home PC.
 
+MOA Bridge (Drake, 21:31): one-click scene transfer between hosts (Houdini -> Maya first): bake geo/sims
+to USD/Alembic, rebuild MOA material networks node-for-node and MOA lights/cameras natively, copy +
+relink textures, convert units. DESIGN RULE NOW: every MOA shader/light node is defined ONCE in a shared
+node registry (name, inputs, types, defaults, UI hints) that each host plugin generates its nodes from;
+materials/lights serialise to USD (UsdShade/UsdLux + moa: attributes). Apply this when building the
+Houdini nodes. Paid feature; needs the Maya plugin, so after v1 (Houdini-only launch).
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to

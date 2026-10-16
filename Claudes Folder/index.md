@@ -89,3 +89,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → design doc "Batch rendering and render farms", Claudes Folder/status.md
 2026-10-16 | DECISION | Licensing: signed offline licence file with updates-until date; online only for updates; sales via merchant-of-record shop on moastudios.com (static site, free hosting)
                       → design doc "Licensing and funding", Claudes Folder/status.md
+2026-10-16 | DECISION | MOA Bridge (scene transfer between hosts) planned; requires shared node registry for all MOA shader/light nodes from the first Houdini node onward
+                      → design doc "MOA Bridge", Claudes Folder/status.md
