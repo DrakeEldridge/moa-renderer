@@ -54,7 +54,7 @@ cmake --build build --config Release
 ```
 
 The first configure downloads the OptiX headers, so it needs internet access.
-The result is `build\Release\moa.exe`, with `pathtracer.ptx` (the GPU programs) next to it.
+The result is `build\Release\moa.exe`. The GPU programs are built into it, so it's the only file you need.
 
 ## Live window
 
@@ -121,7 +121,7 @@ Run `moa.exe --help` for every option.
 ## Project layout
 
 ```
-CMakeLists.txt           build script
+CMakeLists.txt           build script: the moa_core engine library, then the moa.exe viewer
 build.bat / run.bat      one-click build and batch test render (Windows)
 live.bat                 opens the live render window
 src/main.cpp             command-line front end (live window by default, --batch for files)
@@ -129,6 +129,7 @@ src/LiveView.*           live render window (GLFW + Dear ImGui)
 src/MeshLoader.*         OBJ and STL loading, texture discovery
 src/Image.*              texture image loading (stb_image)
 src/Renderer.*           OptiX setup, scene upload, render loop, denoiser
+src/EmbeddedPtx.h        the GPU programs, built into the engine (see cmake/EmbedFile.cmake)
 src/Scene.*              scene description and the built-in Cornell box
 src/ImageIO.*            PNG and PFM output
 src/CudaBuffer.h         GPU memory helper
@@ -148,7 +149,6 @@ Claudes Folder/          project memory: status, change index and session logs
 | `No CUDA toolset found` during configure | CUDA was installed before Visual Studio. Re-run the CUDA installer (choose Custom and keep "Visual Studio Integration" ticked). |
 | `OPTIX_ERROR_UNSUPPORTED_ABI_VERSION` | Update the NVIDIA driver to R590 or newer. |
 | `cudaErrorInsufficientDriver` | The driver is older than the CUDA Toolkit. Update the driver. |
-| `Couldn't open GPU program file ... pathtracer.ptx` | Run `moa.exe` from the build output folder, or pass `--ptx path\to\pathtracer.ptx`. |
 | Configure fails downloading `optix-dev` | Check internet access, or point to a local SDK with `-DOPTIX_ROOT="C:/ProgramData/NVIDIA Corporation/OptiX SDK 9.1.0"`. |
 
 ## License

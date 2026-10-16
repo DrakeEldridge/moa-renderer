@@ -31,8 +31,17 @@ echo "== Device code (NVRTC -> PTX)"
 python3 -I "$TOOLS/nvrtc_check.py" "$ROOT/src/device/pathtracer.cu" "$OUT/pathtracer.ptx" "$OPTIX_INC" "$ROOT/src"
 echo "   launch params in PTX: $(grep -o 'params\[[0-9]*\]' "$OUT/pathtracer.ptx" | head -1)"
 
+# Same job as cmake/EmbedFile.cmake: put the PTX into a C++ array for the engine library.
+python3 -I - "$OUT/pathtracer.ptx" "$OUT/EmbeddedPtx.cpp" <<'PY'
+import sys
+data = open(sys.argv[1], 'rb').read()
+rows = ',\n'.join(','.join('0x%02x' % b for b in data[i:i + 32]) for i in range(0, len(data), 32))
+open(sys.argv[2], 'w').write('#include <cstddef>\nnamespace moa {\nextern const unsigned char moaEmbeddedPtx[] = {\n%s,\n0x00};\n'
+                             'extern const std::size_t moaEmbeddedPtxSize = %d;\n}\n' % (rows, len(data)))
+PY
+
 echo "== Host code (g++)"
-g++ -std=c++17 -O2 -Wall -Wextra "${INC[@]}" "$ROOT"/src/*.cpp "$OUT"/imgui/*.o -L"$OUT/lib" -lcudart -ldl -lglfw -lGL -o "$OUT/moa"
+g++ -std=c++17 -O2 -Wall -Wextra "${INC[@]}" "$ROOT"/src/*.cpp "$OUT/EmbeddedPtx.cpp" "$OUT"/imgui/*.o -L"$OUT/lib" -lcudart -ldl -lglfw -lGL -o "$OUT/moa"
 printf '#include "device/LaunchParams.h"\n#include <cstdio>\nint main(){std::printf("%%zu\\n",sizeof(moa::LaunchParams));}\n' > "$OUT/sz.cpp"
 g++ -std=c++17 "${INC[@]}" "$OUT/sz.cpp" -o "$OUT/sz"
 echo "   sizeof(LaunchParams) on host: $("$OUT/sz") (must match the PTX value above)"

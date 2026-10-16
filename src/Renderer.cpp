@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "Renderer.h"
 
+#include "EmbeddedPtx.h"
+
 #include "device/vec_math.h"
 
 // optix_function_table_definition.h must be included in exactly one source file.
@@ -38,7 +40,7 @@ std::string readTextFile(const std::string& path)
     std::ifstream file(path, std::ios::binary);
     if (!file)
         throw std::runtime_error("Couldn't open GPU program file: " + path +
-                                 "\nIt should sit next to moa.exe (the build copies it there).");
+                                 "\n(Leave --ptx out to use the GPU programs built into MOA.)");
     std::stringstream ss;
     ss << file.rdbuf();
     return ss.str();
@@ -119,7 +121,10 @@ void Renderer::createContext(bool verbose)
 
 void Renderer::createModule(const std::string& ptxPath)
 {
-    const std::string ptx = readTextFile(ptxPath);
+    // No path given: use the copy built into the library.
+    const std::string ptx = ptxPath.empty()
+                                ? std::string(reinterpret_cast<const char*>(moaEmbeddedPtx), moaEmbeddedPtxSize)
+                                : readTextFile(ptxPath);
 
     OptixModuleCompileOptions moduleOptions = {};
     moduleOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
@@ -411,7 +416,7 @@ void Renderer::beginProgressive(const RenderSettings& settings)
         throw std::runtime_error("Image size must be at least 1x1");
 
     resizeFrame(settings.width, settings.height);
-    m_camera = makeCamera(m_cameraDesc, settings.width, settings.height);
+    m_camera = m_useRawCamera ? m_rawCamera : makeCamera(m_cameraDesc, settings.width, settings.height);
 
     LaunchParams& lp = m_launch;
     lp = {};
@@ -420,7 +425,9 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.samplesPerLaunch = std::max(1u, settings.samplesPerLaunch);
     lp.maxDepth = std::max(1u, settings.maxDepth);
     lp.maxSampleValue = settings.maxSampleValue;
-    lp.background = make_float3(settings.background, settings.background, settings.background);
+    lp.background = make_float3(settings.background * settings.backgroundColor[0],
+                                settings.background * settings.backgroundColor[1],
+                                settings.background * settings.backgroundColor[2]);
     lp.beauty = m_beauty.as<float4>();
     lp.albedo = m_albedo.as<float4>();
     lp.normal = m_normal.as<float4>();

@@ -16,12 +16,6 @@
 #include <stdexcept>
 #include <string>
 
-#if defined(_WIN32)
-#include <windows.h>
-#elif defined(__linux__)
-#include <unistd.h>
-#endif
-
 namespace fs = std::filesystem;
 
 namespace {
@@ -33,7 +27,7 @@ struct Options
     moa::RenderSettings render;
     moa::CornellOptions scene;
     std::string out = "renders/cornell";
-    std::string ptx;  // empty = next to the executable
+    std::string ptx;  // empty = the GPU programs built into moa.exe
     float exposure = 1.0f;
     bool denoise = true;
     bool hdr = false;
@@ -76,7 +70,7 @@ void printUsage()
         "  --out PATH           output path prefix (default renders/cornell)\n"
         "  --no-denoise         skip the AI denoiser\n"
         "  --hdr                also write full-range .pfm images\n"
-        "  --ptx FILE           path to pathtracer.ptx (default: next to moa.exe)\n"
+        "  --ptx FILE           load GPU programs from this .ptx (default: built in)\n"
         "  --verbose            print OptiX diagnostic messages\n"
         "  --help               show this help\n",
         kVersion);
@@ -147,25 +141,6 @@ bool parseArgs(int argc, char** argv, Options& o)
     return true;
 }
 
-fs::path executableDir()
-{
-#if defined(_WIN32)
-    wchar_t buf[MAX_PATH];
-    const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    if (n > 0 && n < MAX_PATH)
-        return fs::path(buf).parent_path();
-#elif defined(__linux__)
-    char buf[4096];
-    const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (n > 0)
-    {
-        buf[n] = '\0';
-        return fs::path(buf).parent_path();
-    }
-#endif
-    return fs::current_path();
-}
-
 void save(const std::string& path, bool ok)
 {
     if (ok)
@@ -197,10 +172,9 @@ int main(int argc, char** argv)
         if (!parseArgs(argc, argv, o))
             return 0;
 
-        const std::string ptxPath = o.ptx.empty() ? (executableDir() / "pathtracer.ptx").string() : o.ptx;
 
         std::printf("MOA Renderer %s\n", kVersion);
-        moa::Renderer renderer(ptxPath, o.verbose);
+        moa::Renderer renderer(o.ptx, o.verbose);
         std::printf("GPU: %s\n", renderer.deviceName().c_str());
 
         if (!o.batch)

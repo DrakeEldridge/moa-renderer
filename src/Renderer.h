@@ -24,13 +24,15 @@ struct RenderSettings
     unsigned int samplesPerLaunch = 4;  // larger = faster, but each GPU launch takes longer
     unsigned int maxDepth = 8;
     float maxSampleValue = 4.0f;  // caustic firefly clamp; 0 disables it
-    float background = 0.0f;      // uniform grey background light (rays leaving the scene)
+    float background = 0.0f;      // uniform background light (rays leaving the scene)
+    float backgroundColor[3] = {1.0f, 1.0f, 1.0f};  // colour of that light (multiplied by background)
 };
 
 class Renderer
 {
 public:
-    // Loads the compiled GPU programs from `ptxPath` and sets up OptiX.
+    // Sets up OptiX. The GPU programs are built into the library; `ptxPath` loads a different
+    // .ptx file instead (leave it empty normally).
     Renderer(const std::string& ptxPath, bool verbose);
     ~Renderer();
 
@@ -57,7 +59,19 @@ public:
     void renderPass();
 
     // Camera used by the next beginProgressive()/render(). setScene() resets it to the scene's camera.
-    void setCamera(const CameraDesc& camera) { m_cameraDesc = camera; }
+    void setCamera(const CameraDesc& camera)
+    {
+        m_cameraDesc = camera;
+        m_useRawCamera = false;
+    }
+    // Sets the primary-ray vectors directly (direction = x*u + y*v + w for x, y in [-1, 1]).
+    // Host plugins use this to match the host's camera exactly, including off-centre framing.
+    // Stays in effect (also across setScene) until setCamera() is called.
+    void setCameraRays(const Camera& rays)
+    {
+        m_rawCamera = rays;
+        m_useRawCamera = true;
+    }
     const CameraDesc& camera() const { return m_cameraDesc; }
     unsigned int width() const { return m_width; }
     unsigned int height() const { return m_height; }
@@ -137,6 +151,8 @@ private:
     OptixTraversableHandle m_gasHandle = 0;
     Camera m_camera = {};
     CameraDesc m_cameraDesc = {};
+    Camera m_rawCamera = {};
+    bool m_useRawCamera = false;
     QuadLight m_light = {};
 
     // Frame buffers (running averages)
