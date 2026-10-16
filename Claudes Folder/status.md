@@ -123,6 +123,12 @@ Installers ask for a render output folder (local or UNC share like \\server\proj
 there directly and can read scenes from it; test-write on install; UNC not mapped drives (services
 can't see mapped drives); per-job override.
 
+Licensing/website (Drake, 21:21): moastudios.com (empty, no host yet) with Products page + MOA reel.
+Plan: merchant-of-record shop (Lemon Squeezy/Paddle/Gumroad) issues keys; activation returns a licence
+file signed with Moa Studios' private key (owner, updates-until = purchase + 3 years); app verifies
+offline with embedded public key (works forever offline); updater and installer refuse releases dated
+after updates-until. Static site on free hosting (Cloudflare Pages/Netlify/GitHub Pages), not home PC.
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to

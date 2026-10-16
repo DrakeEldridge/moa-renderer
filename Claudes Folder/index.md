@@ -87,3 +87,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → design doc "Licensing and funding", Claudes Folder/status.md
 2026-10-16 | DECISION | Built-in one-click LAN render farm node (MoaRenderer-RenderfarmNode.exe): service, discovery, pairing, job sending; paid MOA Studio part
                       → design doc "Batch rendering and render farms", Claudes Folder/status.md
+2026-10-16 | DECISION | Licensing: signed offline licence file with updates-until date; online only for updates; sales via merchant-of-record shop on moastudios.com (static site, free hosting)
+                      → design doc "Licensing and funding", Claudes Folder/status.md
