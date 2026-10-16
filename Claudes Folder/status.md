@@ -156,6 +156,8 @@ camera autofocus (click-to-focus, track object), area light spread, rough refrac
 MOA Link for Nuke (brainstorm, 22:54, in design doc): live render + all passes streamed into a Nuke node;
 light-group tweaks pushed back to scene lights; pixel picking selects objects in Houdini; plate/camera/
 lens distortion from Nuke into MOA; fix-it crop/frame farm renders; AI toolkit as Nuke nodes.
+Comp-first workflow: request passes from the Nuke node live (render setup updates), scrub frames at
+preview quality, final farm render reads the Nuke script and renders exactly the passes it uses.
 
 ## Blockers / waiting on
 
