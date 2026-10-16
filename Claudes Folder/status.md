@@ -147,6 +147,12 @@ node behaviour lives in the engine, never in a plugin; same params/defaults, uni
 export, per-texture colour space; keep node names/positions/network boxes/colours; CI renders the
 same test scenes through every host and requires pixel-identical output.
 
+Feature ideas (Drake, 22:46, in design doc "More feature ideas"): huge-scene support (IAS instancing,
+compression, out-of-core; Nanite itself not needed), many-light sampling (light tree/ReSTIR), OCIO with
+ACES 2.0 + AgX, object/light lister panel, thin-lens DOF + bokeh (blades, image, anamorphic, cat-eye),
+camera autofocus (click-to-focus, track object), area light spread, rough refraction (M6), Archicad
+(archviz hosts later), tyFlow Inferno + standalone sim tools -> OpenVDB volume rendering.
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to
