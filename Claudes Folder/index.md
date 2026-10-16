@@ -91,3 +91,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → design doc "Licensing and funding", Claudes Folder/status.md
 2026-10-16 | DECISION | MOA Bridge (scene transfer between hosts) planned; requires shared node registry for all MOA shader/light nodes from the first Houdini node onward
                       → design doc "MOA Bridge", Claudes Folder/status.md
+2026-10-16 | DECISION | Host-native shader nodes supported inside MOA networks; AI-assisted Bridge Translator converts them (match list first, AI for leftovers, bake fallback, preview compare)
+                      → design doc "MOA Bridge", Claudes Folder/status.md

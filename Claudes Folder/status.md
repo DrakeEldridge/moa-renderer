@@ -135,6 +135,10 @@ relink textures, convert units. DESIGN RULE NOW: every MOA shader/light node is 
 node registry (name, inputs, types, defaults, UI hints) that each host plugin generates its nodes from;
 materials/lights serialise to USD (UsdShade/UsdLux + moa: attributes). Apply this when building the
 Houdini nodes. Paid feature; needs the Maya plugin, so after v1 (Houdini-only launch).
+UPDATE 21:41: host-native nodes (Houdini VOP/MaterialX utilities, Maya ramp/blendColors/etc.) MUST work
+inside MOA networks (Redshift strength). Bridge Translator: report green=MOA, blue=built-in match list,
+yellow=AI-proposed equivalent (artist approves), red=bake to texture or swap; preview-ball render compare
+both versions; MaterialX as middle language; AI local or BYO key.
 Bridge rules (from Drake's Redshift 2018 rat-fur pain: Houdini RS network had to be rebuilt in Maya
 from Maya-native ramp/blendColors/gammaCorrect/place2dTexture nodes; same-named nodes behaved
 differently): MOA-only nodes incl. ramps/mixers/colour-correct/hair-position/random-per-strand;
