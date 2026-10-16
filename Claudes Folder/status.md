@@ -119,6 +119,9 @@ Hydra delegate code can be compile-checked here against pip `usd-core` headers i
 Built-in LAN farm (Drake, 21:12): `MoaRenderer-RenderfarmNode.exe` copied to spare PCs, double-click
 installs moa-render + background service, driver check, firewall rule, LAN discovery (mDNS), pairing code,
 main PC farm panel sends frames + scene files, collects EXRs, re-queues dropped frames. In design doc.
+Installers ask for a render output folder (local or UNC share like \\server\projects); nodes write
+there directly and can read scenes from it; test-write on install; UNC not mapped drives (services
+can't see mapped drives); per-job override.
 
 ## Blockers / waiting on
 
