@@ -158,6 +158,7 @@ light-group tweaks pushed back to scene lights; pixel picking selects objects in
 lens distortion from Nuke into MOA; fix-it crop/frame farm renders; AI toolkit as Nuke nodes.
 Comp-first workflow: request passes from the Nuke node live (render setup updates), scrub frames at
 preview quality, final farm render reads the Nuke script and renders exactly the passes it uses.
+Parallel pipelines: renders latest USD department layers; Link node shows/pins layer versions, flags new publishes.
 
 ## Blockers / waiting on
 
