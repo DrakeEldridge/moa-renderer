@@ -103,6 +103,19 @@ later one-frame splitting by averaging different-seed renders, Linux nodes. Desi
 split so it runs headless from day one (no GLFW/ImGui dependency in moa_core).
 Hydra delegate code can be compile-checked here against pip `usd-core` headers if they match.
 
+## Business model: OPEN CORE (Drake's decision, 2026-10-16 21:10)
+
+- Public repo `moa-renderer` (Apache 2.0): render engine library + standalone MOA Viewer (OBJ/STL/HDRI).
+- Private repo (proposed name `moa-studio`, Drake must create it): Hydra delegate + Houdini/Maya/
+  Blender/C4D/Unreal plugins, USD scene loading, `moa-render` farm renderer, AI toolkit, licence keys,
+  one Windows installer (Inno Setup; finds Houdini/Maya, writes Houdini package .json / Maya .mod).
+  The private repo pulls the public engine in (git submodule) so engine fixes flow both ways.
+- Pricing idea: free non-commercial (720p clean or 1080p watermark), $100 perpetual commercial with
+  3 years of releases, unlimited free farm nodes with a commercial licence. Details in design doc
+  "Licensing and funding".
+- CONSEQUENCE FOR THE HOUDINI WORK: the engine library (moa_core) goes in the public repo with a clean
+  C++ API; the Hydra delegate goes in the private repo. Don't put plugin/USD code in the public repo.
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to

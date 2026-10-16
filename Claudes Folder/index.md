@@ -83,3 +83,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → Claudes Folder/status.md
 2026-10-16 | DECISION | Batch + render-farm plan added to design doc: plugin batch, husk, headless moa-render (USD -> EXR), farm managers, frame/seed splitting, Linux nodes
                       → design doc section "Batch rendering and render farms", Claudes Folder/status.md
+2026-10-16 | DECISION | Open core: engine + MOA Viewer stay Apache 2.0 (public); plugins, USD loading, farm renderer, AI toolkit, installer = paid MOA Studio (private repo). Pricing in design doc
+                      → design doc "Licensing and funding", Claudes Folder/status.md
