@@ -85,3 +85,5 @@ Format: `date | TAG | summary` then `→ files / log` on the next line.
                       → design doc section "Batch rendering and render farms", Claudes Folder/status.md
 2026-10-16 | DECISION | Open core: engine + MOA Viewer stay Apache 2.0 (public); plugins, USD loading, farm renderer, AI toolkit, installer = paid MOA Studio (private repo). Pricing in design doc
                       → design doc "Licensing and funding", Claudes Folder/status.md
+2026-10-16 | DECISION | Built-in one-click LAN render farm node (MoaRenderer-RenderfarmNode.exe): service, discovery, pairing, job sending; paid MOA Studio part
+                      → design doc "Batch rendering and render farms", Claudes Folder/status.md

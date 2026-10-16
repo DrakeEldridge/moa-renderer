@@ -116,6 +116,10 @@ Hydra delegate code can be compile-checked here against pip `usd-core` headers i
 - CONSEQUENCE FOR THE HOUDINI WORK: the engine library (moa_core) goes in the public repo with a clean
   C++ API; the Hydra delegate goes in the private repo. Don't put plugin/USD code in the public repo.
 
+Built-in LAN farm (Drake, 21:12): `MoaRenderer-RenderfarmNode.exe` copied to spare PCs, double-click
+installs moa-render + background service, driver check, firewall rule, LAN discovery (mDNS), pairing code,
+main PC farm panel sends frames + scene files, collects EXRs, re-queues dropped frames. In design doc.
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to
