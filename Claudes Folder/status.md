@@ -153,6 +153,10 @@ ACES 2.0 + AgX, object/light lister panel, thin-lens DOF + bokeh (blades, image,
 camera autofocus (click-to-focus, track object), area light spread, rough refraction (M6), Archicad
 (archviz hosts later), tyFlow Inferno + standalone sim tools -> OpenVDB volume rendering.
 
+MOA Link for Nuke (brainstorm, 22:54, in design doc): live render + all passes streamed into a Nuke node;
+light-group tweaks pushed back to scene lights; pixel picking selects objects in Houdini; plate/camera/
+lens distortion from Nuke into MOA; fix-it crop/frame farm renders; AI toolkit as Nuke nodes.
+
 ## Blockers / waiting on
 
 - None. Drake's folder is now a git clone tracking `origin/main`: deliver changes by pushing to
