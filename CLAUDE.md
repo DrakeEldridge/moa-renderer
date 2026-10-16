@@ -1,26 +1,19 @@
 # MOA Renderer: instructions for Claude
 
-This is Drake's (Moa Studios) open-source GPU path tracer. Drake is a 3D/VFX artist
-(Houdini, Maya, Unreal), not a programmer. Claude writes the code and Drake builds and runs
-it on his PC.
+The open-source (Apache 2.0) GPU path tracer by Moa Studios: the render engine library
+(`moa_core`) and the `moa.exe` test window. Drake is a 3D/VFX artist (Houdini, Maya, Unreal), not a
+programmer. Claude writes the code and Drake builds and runs it on his PC.
 
 ## Before doing anything
 
-1. Read `Claudes Folder/START_HERE.md`, then `Claudes Folder/status.md`.
-2. Before fixing a bug or changing a system, search `Claudes Folder/index.md` (and the
-   `logs/` folder) for its history, including approaches that FAILED.
+Project memory, test tools and the paid plugins live in Drake's private workspace repo
+(`DrakeEldridge/moa-studios-renderer`). This repo is cloned inside it as `MOA Renderer/`.
+Follow the workspace's `CLAUDE.md` and read its `Claudes Folder/START_HERE.md` and `status.md`.
+If only this public repo is available, say so and ask Drake for access to the workspace repo.
 
-## While working
+## Rules for this repo
 
-- Code must build on Windows with MSVC + CUDA (Drake's machine). Claude's cloud workspace has no
-  GPU: compile-check device code with NVRTC and host code with g++, and use the CPU OptiX
-  mock (see `Claudes Folder/tools/`) to test path-tracing changes visually.
-- Keep `LaunchParams` identical on host and device (check `sizeof` after changing it).
+- Engine only: no plugin, USD-loading, licensing or business material here (that's private).
+- Code must build on Windows with MSVC + CUDA (Drake's machine). Keep `LaunchParams` identical
+  on host and device (check `sizeof` after changing it).
 - Explain things to Drake in artist terms. Give exact steps for anything he has to do.
-
-## Wrap-up (end of every session, or before the chat gets long)
-
-1. Update `Claudes Folder/status.md` (current state, next steps, blockers).
-2. Add entries to `Claudes Folder/index.md` (date | TAG | summary, plus files touched and log name).
-3. Write or extend the session log in `Claudes Folder/logs/`.
-4. Commit and push to GitHub (`DrakeEldridge/moa-renderer`). Git history is the backup.

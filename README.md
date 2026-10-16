@@ -139,7 +139,6 @@ src/device/              code that runs on the GPU
   LaunchParams.h         data shared between CPU and GPU
   vec_math.h, random.h   maths and random-number helpers
 third_party/stb/         stb_image_write (public domain / MIT)
-Claudes Folder/          project memory: status, change index and session logs
 ```
 
 ## Troubleshooting

@@ -13,7 +13,8 @@ Desktop.ini
 
 # Local convenience shortcuts
 *.lnk
-Claudes Folder/ClaudeMemoryWorkflow.txt
+# Notes moved to the private workspace repo (2026-10-17); ignore any local leftovers.
+/Claudes Folder/
 
 # Test models (large, often third-party licensed)
 /models/
