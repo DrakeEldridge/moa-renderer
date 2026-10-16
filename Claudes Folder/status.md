@@ -137,7 +137,8 @@ materials/lights serialise to USD (UsdShade/UsdLux + moa: attributes). Apply thi
 Houdini nodes. Paid feature; needs the Maya plugin, so after v1 (Houdini-only launch).
 UPDATE 21:41: host-native nodes (Houdini VOP/MaterialX utilities, Maya ramp/blendColors/etc.) MUST work
 inside MOA networks (Redshift strength). Bridge Translator: report green=MOA, blue=built-in match list,
-yellow=AI-proposed equivalent (artist approves), red=bake to texture or swap; preview-ball render compare
+yellow=AI-proposed equivalent (artist approves), red=pop-up: continue (bake/skip) or AI rebuilds that
+part of the SOURCE network with nodes that have matches (keeps scene bridgeable); all-MOA = no checks; preview-ball render compare
 both versions; MaterialX as middle language; AI local or BYO key.
 Bridge rules (from Drake's Redshift 2018 rat-fur pain: Houdini RS network had to be rebuilt in Maya
 from Maya-native ramp/blendColors/gammaCorrect/place2dTexture nodes; same-named nodes behaved
