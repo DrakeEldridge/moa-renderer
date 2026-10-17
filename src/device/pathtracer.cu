@@ -253,6 +253,7 @@ extern "C" __global__ void __raygen__render()
     float3 sumRadiance = make_float3(0.0f, 0.0f, 0.0f);
     float3 sumAlbedo = make_float3(0.0f, 0.0f, 0.0f);
     float3 sumNormal = make_float3(0.0f, 0.0f, 0.0f);
+    float firstDepth = 0.0f;  // depth pass: 0 = the camera ray hit nothing
 
     for (unsigned int s = 0; s < params.samplesPerLaunch; ++s)
     {
@@ -322,6 +323,8 @@ extern "C" __global__ void __raygen__render()
             {
                 albedoAov = albedo;
                 normalAov = n;
+                if (s == 0)
+                    firstDepth = dot(hit.position - cam.eye, normalize(cam.w));
             }
 
             if (isEmissive(m))
@@ -443,6 +446,8 @@ extern "C" __global__ void __raygen__render()
 
     if (params.subframeIndex == 0)
     {
+        if (params.depth)
+            params.depth[pixel] = firstDepth;
         params.beauty[pixel] = make_float4(newRadiance.x, newRadiance.y, newRadiance.z, 1.0f);
         params.albedo[pixel] = make_float4(newAlbedo.x, newAlbedo.y, newAlbedo.z, 1.0f);
         params.normal[pixel] = make_float4(newNormal.x, newNormal.y, newNormal.z, 0.0f);

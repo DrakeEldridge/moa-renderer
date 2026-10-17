@@ -76,6 +76,9 @@ struct LaunchParams
     float4* beauty;
     float4* albedo;
     float4* normal;
+    // Distance from the camera plane (along the view direction) to the first surface the centre
+    // ray of each pixel hits, written on the first launch only; 0 = nothing hit. May be null.
+    float* depth;
 
     Camera camera;
     QuadLight light;

@@ -86,6 +86,9 @@ public:
     void downloadAlbedo(std::vector<float4>& out) const { m_albedo.download(out); }
     void downloadNormal(std::vector<float4>& out) const { m_normal.download(out); }
     void downloadDenoised(std::vector<float4>& out) const { m_denoised.download(out); }
+    // Camera-plane distance to the first surface per pixel (0 = nothing hit). Ready after the
+    // first renderPass() following beginProgressive().
+    void downloadDepth(std::vector<float>& out) const { m_depth.download(out); }
 
 private:
     void createContext(bool verbose);
@@ -162,6 +165,7 @@ private:
     CudaBuffer m_beauty;
     CudaBuffer m_albedo;
     CudaBuffer m_normal;
+    CudaBuffer m_depth;
     CudaBuffer m_launchParams;
     LaunchParams m_launch = {};
 

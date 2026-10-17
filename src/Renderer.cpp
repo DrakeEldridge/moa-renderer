@@ -406,6 +406,7 @@ void Renderer::resizeFrame(unsigned int width, unsigned int height)
     m_albedo.resize(bytes);
     m_normal.resize(bytes);
     m_denoised.resize(bytes);
+    m_depth.resize(static_cast<size_t>(width) * height * sizeof(float));
 }
 
 void Renderer::beginProgressive(const RenderSettings& settings)
@@ -431,6 +432,7 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.beauty = m_beauty.as<float4>();
     lp.albedo = m_albedo.as<float4>();
     lp.normal = m_normal.as<float4>();
+    lp.depth = m_depth.as<float>();
     lp.camera = m_camera;
     lp.light = m_light;
     lp.hasQuadLight = m_hasQuadLight ? 1u : 0u;
