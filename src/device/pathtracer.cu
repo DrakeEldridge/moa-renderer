@@ -469,7 +469,13 @@ extern "C" __global__ void __raygen__render()
                 break;
             }
 
-            const Material m = params.materials[hit.materialId];
+            Material m = params.materials[hit.materialId];
+            // Roughness / metalness maps replace the slider values (as a connected input does in
+            // MaterialX). Greyscale, linear: the red channel is used.
+            if (m.roughnessTexture >= 0)
+                m.roughness = sampleTexture(m.roughnessTexture, hit.uv, m.flags).x;
+            if (m.metallicTexture >= 0)
+                m.metallic = sampleTexture(m.metallicTexture, hit.uv, m.flags).x;
             const bool frontFace = dot(direction, hit.normal) < 0.0f;
             // ng: true surface side (used to offset new rays so they don't re-hit the surface).
             // n: smooth shading normal on the same side, used for lighting and reflection.

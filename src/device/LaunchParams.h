@@ -46,6 +46,8 @@ struct Material
     float metallic;       // 0 = dielectric (plastic, stone, skin), 1 = metal (albedo tints reflections)
     float specular;       // strength of the dielectric reflection layer (1 = physically based)
     float transmission;   // > 0.5 = glass-like: albedo tints the light passing through
+    int roughnessTexture; // replaces `roughness` (red channel, linear), or -1
+    int metallicTexture;  // replaces `metallic` (red channel, linear), or -1
 };
 
 // Pinhole camera. Primary ray direction = normalize(x * u + y * v + w) for x, y in [-1, 1].
