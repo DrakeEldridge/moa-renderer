@@ -113,6 +113,171 @@ __forceinline__ __device__ float3 refractDir(float3 i, float3 n, float eta, floa
     return normalize(i * eta + n * (eta * cosI - cosT));
 }
 
+// ---------------------------------------------------------------------------------------
+// Standard material: Lambert diffuse under a GGX microfacet reflection layer, with
+// metalness (the base colour tints the reflection and there is no diffuse) and an optional
+// rough dielectric (glass) mode. Microfacet maths: Walter et al. 2007 (GGX), Heitz 2014
+// (Smith masking), Heitz 2018 (sampling the visible normals).
+// ---------------------------------------------------------------------------------------
+
+struct Frame
+{
+    float3 t, b, n;
+    __forceinline__ __device__ float3 toLocal(float3 v) const { return make_float3(dot(v, t), dot(v, b), dot(v, n)); }
+    __forceinline__ __device__ float3 toWorld(float3 v) const { return t * v.x + b * v.y + n * v.z; }
+};
+
+__forceinline__ __device__ Frame makeFrame(float3 n)
+{
+    const float sign = copysignf(1.0f, n.z);
+    const float a = -1.0f / (sign + n.z);
+    const float b = n.x * n.y * a;
+    Frame f;
+    f.t = make_float3(1.0f + sign * n.x * n.x * a, sign * b, -sign * n.x);
+    f.b = make_float3(b, sign + n.y * n.y * a, -n.y);
+    f.n = n;
+    return f;
+}
+
+__forceinline__ __device__ float ggxD(float a2, float cosH)
+{
+    const float d = cosH * cosH * (a2 - 1.0f) + 1.0f;
+    return a2 / (kPi * d * d);
+}
+
+__forceinline__ __device__ float smithLambda(float a2, float cosV)
+{
+    const float c2 = fmaxf(cosV * cosV, 1e-8f);
+    return 0.5f * (-1.0f + sqrtf(1.0f + a2 * (1.0f - c2) / c2));
+}
+
+// Samples a microfacet normal among those visible from wo (local frame, wo.z > 0).
+__forceinline__ __device__ float3 sampleGgxVisibleNormal(float3 wo, float alpha, float u1, float u2)
+{
+    const float3 vh = normalize(make_float3(alpha * wo.x, alpha * wo.y, wo.z));
+    const float lensq = vh.x * vh.x + vh.y * vh.y;
+    const float3 t1 = lensq > 0.0f ? make_float3(-vh.y, vh.x, 0.0f) * (1.0f / sqrtf(lensq)) : make_float3(1.0f, 0.0f, 0.0f);
+    const float3 t2 = cross(vh, t1);
+    const float r = sqrtf(u1);
+    const float phi = 2.0f * kPi * u2;
+    const float p1 = r * cosf(phi);
+    float p2 = r * sinf(phi);
+    const float s = 0.5f * (1.0f + vh.z);
+    p2 = (1.0f - s) * sqrtf(fmaxf(0.0f, 1.0f - p1 * p1)) + s * p2;
+    const float3 nh = t1 * p1 + t2 * p2 + vh * sqrtf(fmaxf(0.0f, 1.0f - p1 * p1 - p2 * p2));
+    return normalize(make_float3(alpha * nh.x, alpha * nh.y, fmaxf(1e-6f, nh.z)));
+}
+
+__forceinline__ __device__ float luminance(float3 c) { return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; }
+
+__forceinline__ __device__ float3 schlick(float3 f0, float cosTheta)
+{
+    const float m = clampf(1.0f - cosTheta, 0.0f, 1.0f);
+    const float m5 = m * m * m * m * m;
+    return f0 + (make_float3(1.0f, 1.0f, 1.0f) - f0) * m5;
+}
+
+// Everything the opaque standard material needs at one hit point.
+struct StandardBsdf
+{
+    float3 base;
+    float metallic;
+    float specular;
+    float ior;
+    float alpha;       // GGX roughness (roughness squared)
+    bool deltaSpecular;  // roughness ~ 0: a perfect mirror layer
+    float specProb;    // probability of sampling the reflection layer (from wo)
+
+    __forceinline__ __device__ float dielectricF(float cosTheta) const
+    {
+        return specular * fresnelDielectric(cosTheta, 1.0f / ior);
+    }
+    __forceinline__ __device__ float3 reflectionColor(float cosTheta) const
+    {
+        const float fd = dielectricF(cosTheta);
+        return make_float3(fd, fd, fd) * (1.0f - metallic) + schlick(base, cosTheta) * metallic;
+    }
+    __forceinline__ __device__ float3 diffuseColor(float cosWo) const
+    {
+        // Light reflected by the top layer doesn't reach the diffuse base.
+        return base * ((1.0f - metallic) * (1.0f - dielectricF(cosWo)) * kInvPi);
+    }
+};
+
+__forceinline__ __device__ StandardBsdf makeStandardBsdf(const Material& m, float3 albedo, float cosWo)
+{
+    StandardBsdf s;
+    s.base = albedo;
+    s.metallic = clampf(m.metallic, 0.0f, 1.0f);
+    s.specular = fmaxf(m.specular, 0.0f);
+    s.ior = fmaxf(m.ior, 1.0001f);
+    const float rough = clampf(m.roughness, 0.0f, 1.0f);
+    s.deltaSpecular = rough < 0.02f;
+    s.alpha = fmaxf(rough * rough, 1e-4f);
+    // Pick the reflection layer roughly in proportion to how much light it carries, but often
+    // enough that glossy reflections clean up.
+    const float wSpec = luminance(s.reflectionColor(cosWo));
+    const float wDiff = luminance(s.diffuseColor(cosWo)) * kPi;
+    const float total = wSpec + wDiff;
+    s.specProb = total > 0.0f ? clampf(wSpec / total, 0.0f, 1.0f) : 0.0f;
+    if (wSpec > 0.0f && wDiff > 0.0f)
+        s.specProb = clampf(s.specProb, 0.25f, 0.9f);
+    return s;
+}
+
+// BSDF value (without the cosine) and the pdf of choosing wi by sampleStandard(). Local frame,
+// wo.z > 0. The perfect-mirror layer (deltaSpecular) can't be evaluated and is left out.
+__forceinline__ __device__ float3 evalStandard(const StandardBsdf& s, float3 wo, float3 wi, float& pdf)
+{
+    pdf = 0.0f;
+    if (wi.z <= 0.0f || wo.z <= 0.0f)
+        return make_float3(0.0f, 0.0f, 0.0f);
+    float3 f = s.diffuseColor(wo.z);
+    pdf = (1.0f - s.specProb) * wi.z * kInvPi;
+    if (!s.deltaSpecular && s.specProb > 0.0f)
+    {
+        const float3 h = normalize(wo + wi);
+        const float a2 = s.alpha * s.alpha;
+        const float d = ggxD(a2, h.z);
+        const float lo = smithLambda(a2, wo.z);
+        const float g2 = 1.0f / (1.0f + lo + smithLambda(a2, wi.z));
+        const float voh = fmaxf(dot(wo, h), 1e-6f);
+        f += s.reflectionColor(voh) * (d * g2 / (4.0f * wo.z * wi.z));
+        // Visible-normal sampling: pdf(wi) = G1(wo) D / (4 wo.z).
+        pdf += s.specProb * d / ((1.0f + lo) * 4.0f * wo.z);
+    }
+    return f;
+}
+
+// Samples a bounce. Returns the weight f*cos/pdf; delta = a perfect-mirror bounce.
+__forceinline__ __device__ float3 sampleStandard(const StandardBsdf& s, float3 wo, unsigned int& seed, float3& wi,
+                                                 float& pdf, bool& delta)
+{
+    delta = false;
+    if (rnd(seed) < s.specProb)
+    {
+        if (s.deltaSpecular)
+        {
+            wi = make_float3(-wo.x, -wo.y, wo.z);
+            delta = true;
+            pdf = 0.0f;
+            return s.reflectionColor(wo.z) * (1.0f / s.specProb);
+        }
+        const float3 h = sampleGgxVisibleNormal(wo, s.alpha, rnd(seed), rnd(seed));
+        wi = reflect(-wo, h);
+    }
+    else
+    {
+        const float r = sqrtf(rnd(seed));
+        const float phi = 2.0f * kPi * rnd(seed);
+        wi = make_float3(r * cosf(phi), r * sinf(phi), sqrtf(fmaxf(0.0f, 1.0f - r * r)));
+    }
+    if (wi.z <= 0.0f)
+        return make_float3(0.0f, 0.0f, 0.0f);
+    const float3 f = evalStandard(s, wo, wi, pdf);
+    return pdf > 0.0f ? f * (wi.z / pdf) : make_float3(0.0f, 0.0f, 0.0f);
+}
+
 // Firefly control: limits how bright a caustic contribution can be (light that went
 // diffuse -> mirror/glass -> light). Those paths are found only rarely by random bounces and
 // show up as bright speckles. Clamping is slightly biased (like Redshift's "max subsample
@@ -339,29 +504,48 @@ extern "C" __global__ void __raygen__render()
             }
 
             lastWasDiffuse = false;
-            if (m.type == MAT_DIFFUSE)
-            {
-                // Next-event estimation towards the HDRI, combined with bounce sampling via MIS.
-                if (params.envWidth > 0)
+            const bool isStandard = m.type == MAT_STANDARD;
+            const bool standardGlass = isStandard && m.transmission > 0.5f;
+            const Frame frame = makeFrame(n);
+            float3 woLocal = frame.toLocal(-direction);
+            woLocal.z = fmaxf(woLocal.z, 1e-4f);  // normal maps can tilt n slightly past the eye
+            StandardBsdf sb = {};
+            if (isStandard && !standardGlass)
+                sb = makeStandardBsdf(m, albedo, woLocal.z);
+
+            // Light sampling (next-event estimation) for matte and opaque standard surfaces.
+            const bool useNee = m.type == MAT_DIFFUSE || (isStandard && !standardGlass);
+            auto evalBsdf = [&](float3 l, float& pdfBsdf) -> float3 {
+                if (m.type == MAT_DIFFUSE)
                 {
-                    float pdfLight = 0.0f;
-                    const float3 l = sampleEnvironment(rnd(seed), rnd(seed), pdfLight);
-                    const float cosSurface = dot(n, l);
-                    if (pdfLight > 0.0f && cosSurface > 0.0f && dot(ng, l) > 0.0f)
+                    pdfBsdf = fmaxf(dot(n, l), 0.0f) * kInvPi;
+                    return albedo * kInvPi;
+                }
+                return evalStandard(sb, woLocal, frame.toLocal(l), pdfBsdf);
+            };
+
+            if (useNee && params.envWidth > 0)
+            {
+                // Towards the HDRI, combined with bounce sampling via MIS.
+                float pdfLight = 0.0f;
+                const float3 l = sampleEnvironment(rnd(seed), rnd(seed), pdfLight);
+                const float cosSurface = dot(n, l);
+                if (pdfLight > 0.0f && cosSurface > 0.0f && dot(ng, l) > 0.0f)
+                {
+                    float pdfBsdf = 0.0f;
+                    const float3 f = evalBsdf(l, pdfBsdf);
+                    if (maxComponent(f) > 0.0f && traceShadow(hit.position + ng * kRayEpsilon, l, kRayTMax))
                     {
-                        if (traceShadow(hit.position + ng * kRayEpsilon, l, kRayTMax))
-                        {
-                            const float pdfBsdf = cosSurface * kInvPi;
-                            const float3 le = envRadiance(l);
-                            radiance += throughput * albedo * le *
-                                        (kInvPi * cosSurface / pdfLight * misWeight(pdfLight, pdfBsdf));
-                        }
+                        const float3 le = envRadiance(l);
+                        const float3 c = throughput * f * le * (cosSurface / pdfLight * misWeight(pdfLight, pdfBsdf));
+                        // Glossy surfaces seen after a diffuse bounce make caustics: clamp those.
+                        radiance += (afterDiffuse && isStandard) ? clampCaustic(c) : c;
                     }
                 }
             }
-            if (m.type == MAT_DIFFUSE && params.hasQuadLight)
+            if (useNee && params.hasQuadLight)
             {
-                // Next-event estimation: pick a point on the light and test if it is visible.
+                // Pick a point on the area light and test if it is visible.
                 const float3 lightPoint = light.corner + light.edge1 * rnd(seed) + light.edge2 * rnd(seed);
                 const float3 toLight = lightPoint - hit.position;
                 const float dist2 = dot(toLight, toLight);
@@ -369,17 +553,21 @@ extern "C" __global__ void __raygen__render()
                 const float3 l = toLight / dist;
                 const float cosSurface = dot(n, l);
                 const float cosLight = -dot(light.normal, l);
-                if (cosSurface > 0.0f && cosLight > 0.0f)
+                if (cosSurface > 0.0f && cosLight > 0.0f && dot(ng, l) > 0.0f)
                 {
+                    float pdfBsdf = 0.0f;
+                    const float3 f = evalBsdf(l, pdfBsdf);
                     const float3 shadowOrigin = hit.position + ng * kRayEpsilon;
-                    if (traceShadow(shadowOrigin, l, dist - 2.0f * kRayEpsilon))
+                    if (maxComponent(f) > 0.0f && traceShadow(shadowOrigin, l, dist - 2.0f * kRayEpsilon))
                     {
-                        // BSDF (albedo/pi) * Le * geometry term / pdf(area), with pdf = 1/area.
+                        // BSDF * Le * geometry term / pdf(area), with pdf = 1/area.
                         const float g = cosSurface * cosLight / dist2;
-                        radiance += throughput * albedo * light.emission * (kInvPi * g * light.area);
+                        const float3 c = throughput * f * light.emission * (g * light.area);
+                        radiance += (afterDiffuse && isStandard) ? clampCaustic(c) : c;
                     }
                 }
             }
+
             if (m.type == MAT_DIFFUSE)
             {
                 // Continue the path with a cosine-weighted bounce. The cosine and pi cancel
@@ -394,6 +582,29 @@ extern "C" __global__ void __raygen__render()
                 if (dot(ng, direction) <= 0.0f)
                     break;  // bent (normal-mapped) normal sent the bounce into the surface
             }
+            else if (isStandard && !standardGlass)
+            {
+                float3 wiLocal;
+                float pdf = 0.0f;
+                bool delta = false;
+                const float3 weight = sampleStandard(sb, woLocal, seed, wiLocal, pdf, delta);
+                if (maxComponent(weight) <= 0.0f)
+                    break;
+                direction = frame.toWorld(wiLocal);
+                origin = hit.position + ng * kRayEpsilon;
+                throughput *= weight;
+                if (delta)
+                    countEmission = true;  // mirror-sharp reflection: lights are seen directly
+                else
+                {
+                    countEmission = false;
+                    afterDiffuse = true;
+                    lastWasDiffuse = true;
+                    lastBsdfPdf = pdf;
+                }
+                if (dot(ng, direction) <= 0.0f)
+                    break;
+            }
             else if (m.type == MAT_MIRROR)
             {
                 direction = reflect(direction, n);
@@ -401,7 +612,26 @@ extern "C" __global__ void __raygen__render()
                 throughput *= albedo;
                 countEmission = true;
             }
-            else  // MAT_GLASS
+            else if (standardGlass && m.roughness >= 0.02f)
+            {
+                // Rough glass: pick a visible microfacet, then reflect or refract through it by
+                // its Fresnel reflectance. The weight left over is the masking of the new direction.
+                const float eta = frontFace ? 1.0f / m.ior : m.ior;
+                const float rough = clampf(m.roughness, 0.0f, 1.0f);
+                const float alpha = fmaxf(rough * rough, 1e-4f);
+                const float3 h = sampleGgxVisibleNormal(woLocal, alpha, rnd(seed), rnd(seed));
+                const float voh = fmaxf(dot(woLocal, h), 1e-6f);
+                const bool reflected = rnd(seed) < fresnelDielectric(voh, eta);
+                const float3 wiLocal = reflected ? reflect(-woLocal, h) : refractDir(-woLocal, h, eta, voh);
+                if (reflected ? wiLocal.z <= 0.0f : wiLocal.z >= 0.0f)
+                    break;
+                const float g1 = 1.0f / (1.0f + smithLambda(alpha * alpha, fabsf(wiLocal.z)));
+                direction = frame.toWorld(wiLocal);
+                origin = hit.position + (reflected ? ng : -ng) * kRayEpsilon;
+                throughput *= albedo * g1;
+                countEmission = true;
+            }
+            else  // MAT_GLASS, or smooth standard glass
             {
                 const float eta = frontFace ? 1.0f / m.ior : m.ior;
                 const float cosI = -dot(direction, n);

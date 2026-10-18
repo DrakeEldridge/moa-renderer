@@ -49,10 +49,10 @@ void printUsage()
         "  --spp N              samples per pixel (default 256)\n"
         "  --spl N              samples per launch, higher is faster (default 4)\n"
         "  --depth N            max bounces (default 8)\n"
-        "  --tall MATERIAL      tall block: diffuse, mirror or glass (default diffuse)\n"
-        "  --short MATERIAL     short block: diffuse, mirror or glass (default diffuse)\n"
+        "  --tall MATERIAL      tall block: diffuse, mirror, glass, plastic, chrome,\n                       brushed, gold or frosted (default diffuse)\n"
+        "  --short MATERIAL     short block: diffuse, mirror, glass, plastic, chrome,\n                       brushed, gold or frosted (default diffuse)\n"
         "  --model FILE         load an .obj or .stl into the box (replaces the blocks)\n"
-        "  --model-material M   model material: diffuse, mirror or glass (default diffuse)\n"
+        "  --model-material M   model material: diffuse, mirror, glass, plastic, chrome,\n                       brushed, gold or frosted (default diffuse)\n"
         "  --zup                the model file is Z-up (common for STL)\n"
         "  --rotate DEG         turn the model around the vertical axis\n"
         "  --tilt-x DEG         tilt the model around X (e.g. 90 or -90 to stand it up)\n"
@@ -125,15 +125,15 @@ bool parseArgs(int argc, char** argv, Options& o)
         else if (a == "--model-material")
         {
             const std::string name = next();
-            if (!moa::parseMaterialType(name, o.scene.modelMaterial))
-                throw std::runtime_error("Unknown material '" + name + "' (use diffuse, mirror or glass)");
+            if (!moa::parseMaterialPreset(name, o.scene.modelMaterial))
+                throw std::runtime_error("Unknown material '" + name + "' (use diffuse, mirror, glass, plastic, chrome, brushed, gold or frosted)");
         }
         else if (a == "--tall" || a == "--short")
         {
             const std::string name = next();
-            moa::MaterialType& target = (a == "--tall") ? o.scene.tallBlock : o.scene.shortBlock;
-            if (!moa::parseMaterialType(name, target))
-                throw std::runtime_error("Unknown material '" + name + "' (use diffuse, mirror or glass)");
+            moa::MaterialPreset& target = (a == "--tall") ? o.scene.tallBlock : o.scene.shortBlock;
+            if (!moa::parseMaterialPreset(name, target))
+                throw std::runtime_error("Unknown material '" + name + "' (use diffuse, mirror, glass, plastic, chrome, brushed, gold or frosted)");
         }
         else
             throw std::runtime_error("Unknown option: " + a + " (try --help)");

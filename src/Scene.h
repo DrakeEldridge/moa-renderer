@@ -90,15 +90,35 @@ struct EnvironmentTables
 };
 EnvironmentTables buildEnvironmentTables(const HdrImage& image);
 
+// Ready-made materials for the test scene and loaded models.
+enum MaterialPreset : int
+{
+    PRESET_DIFFUSE = 0,  // matte (clay)
+    PRESET_MIRROR,
+    PRESET_GLASS,
+    PRESET_PLASTIC,      // glossy dielectric over the base colour
+    PRESET_CHROME,       // polished metal
+    PRESET_BRUSHED,      // rough metal
+    PRESET_GOLD,
+    PRESET_FROSTED,      // rough glass
+    PRESET_COUNT
+};
+
+// Display names, in MaterialPreset order.
+extern const char* const kMaterialPresetNames[PRESET_COUNT];
+
+// Builds the material for a preset (standard material for everything except matte/mirror/glass).
+Material materialFromPreset(MaterialPreset preset);
+
 // Options for the built-in test scene.
 struct CornellOptions
 {
-    MaterialType tallBlock = MAT_DIFFUSE;
-    MaterialType shortBlock = MAT_DIFFUSE;
+    MaterialPreset tallBlock = PRESET_DIFFUSE;
+    MaterialPreset shortBlock = PRESET_DIFFUSE;
 
     // Optional model placed in the middle of the box (replaces the blocks unless showBlocks).
     const Mesh* model = nullptr;
-    MaterialType modelMaterial = MAT_DIFFUSE;
+    MaterialPreset modelMaterial = PRESET_DIFFUSE;
     bool showBlocks = false;
     bool modelZUp = false;     // many STL files are Z-up
     // Orientation built from button clicks (each one turns the model around a world axis).
@@ -128,7 +148,8 @@ struct CornellOptions
 
 Scene makeCornellBox(const CornellOptions& options);
 
-// Parses "diffuse", "mirror" or "glass". Returns false if the name is unknown.
-bool parseMaterialType(const std::string& name, MaterialType& out);
+// Parses a preset name: diffuse, mirror, glass, plastic, chrome, brushed, gold, frosted.
+// Returns false if the name is unknown.
+bool parseMaterialPreset(const std::string& name, MaterialPreset& out);
 
 }  // namespace moa

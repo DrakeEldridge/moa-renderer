@@ -22,6 +22,7 @@ enum MaterialType : unsigned int
     MAT_DIFFUSE = 0,  // Lambertian (matte) surface
     MAT_MIRROR = 1,   // perfect mirror, tinted by albedo
     MAT_GLASS = 2,    // smooth dielectric with Fresnel, tinted by albedo
+    MAT_STANDARD = 3, // all-purpose: diffuse + GGX specular, metalness, roughness, (rough) glass
 };
 
 enum MaterialFlags : unsigned int
@@ -40,6 +41,11 @@ struct Material
     int normalTexture;    // index into LaunchParams::textures, or -1
     unsigned int flags;   // MaterialFlags
     float normalStrength; // 0 = flat, 1 = as authored
+    // MAT_STANDARD only (like MaterialX Standard Surface / OpenPBR):
+    float roughness;      // 0 = mirror-sharp reflections, 1 = fully blurred
+    float metallic;       // 0 = dielectric (plastic, stone, skin), 1 = metal (albedo tints reflections)
+    float specular;       // strength of the dielectric reflection layer (1 = physically based)
+    float transmission;   // > 0.5 = glass-like: albedo tints the light passing through
 };
 
 // Pinhole camera. Primary ray direction = normalize(x * u + y * v + w) for x, y in [-1, 1].

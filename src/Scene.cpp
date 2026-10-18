@@ -31,30 +31,44 @@ Material diffuse(float r, float g, float b)
     return m;
 }
 
-Material ofType(MaterialType type)
+}  // namespace
+
+const char* const kMaterialPresetNames[PRESET_COUNT] = {"Diffuse", "Mirror",        "Glass", "Plastic",
+                                                        "Chrome",  "Brushed metal", "Gold",  "Frosted glass"};
+
+Material materialFromPreset(MaterialPreset preset)
 {
-    switch (type)
+    Material m = diffuse(0.73f, 0.73f, 0.73f);
+    auto standard = [&](float r, float g, float b, float roughness, float metallic, float transmission) {
+        m.albedo = make_float3(r, g, b);
+        m.type = MAT_STANDARD;
+        m.roughness = roughness;
+        m.metallic = metallic;
+        m.specular = 1.0f;
+        m.transmission = transmission;
+        m.ior = 1.5f;
+    };
+    switch (preset)
     {
-    case MAT_MIRROR:
-    {
-        Material m = diffuse(0.95f, 0.95f, 0.95f);
+    case PRESET_MIRROR:
+        m = diffuse(0.95f, 0.95f, 0.95f);
         m.type = MAT_MIRROR;
-        return m;
-    }
-    case MAT_GLASS:
-    {
-        Material m = diffuse(1.0f, 1.0f, 1.0f);
+        break;
+    case PRESET_GLASS:
+        m = diffuse(1.0f, 1.0f, 1.0f);
         m.type = MAT_GLASS;
         m.ior = 1.5f;
-        return m;
+        break;
+    case PRESET_PLASTIC: standard(0.8f, 0.8f, 0.8f, 0.3f, 0.0f, 0.0f); break;
+    case PRESET_CHROME: standard(0.95f, 0.95f, 0.95f, 0.05f, 1.0f, 0.0f); break;
+    case PRESET_BRUSHED: standard(0.9f, 0.9f, 0.9f, 0.35f, 1.0f, 0.0f); break;
+    case PRESET_GOLD: standard(1.0f, 0.78f, 0.34f, 0.2f, 1.0f, 0.0f); break;
+    case PRESET_FROSTED: standard(1.0f, 1.0f, 1.0f, 0.3f, 0.0f, 1.0f); break;
+    case PRESET_DIFFUSE:
+    default: break;
     }
-    case MAT_DIFFUSE:
-    default:
-        return diffuse(0.73f, 0.73f, 0.73f);
-    }
+    return m;
 }
-
-}  // namespace
 
 void Scene::addQuad(float3 a, float3 b, float3 c, float3 d, unsigned int material, float3 facing)
 {
@@ -154,8 +168,8 @@ Scene makeCornellBox(const CornellOptions& options)
     const unsigned int white = s.addMaterial(diffuse(0.73f, 0.73f, 0.73f));
     const unsigned int red = s.addMaterial(diffuse(0.65f, 0.05f, 0.05f));
     const unsigned int green = s.addMaterial(diffuse(0.12f, 0.45f, 0.15f));
-    const unsigned int tall = s.addMaterial(ofType(options.tallBlock));
-    const unsigned int shrt = s.addMaterial(ofType(options.shortBlock));
+    const unsigned int tall = s.addMaterial(materialFromPreset(options.tallBlock));
+    const unsigned int shrt = s.addMaterial(materialFromPreset(options.shortBlock));
 
     Material lightMat = diffuse(0.0f, 0.0f, 0.0f);
     lightMat.emission = make_float3(17.0f, 12.0f, 4.0f);
@@ -223,12 +237,14 @@ Scene makeCornellBox(const CornellOptions& options)
 
     if (options.model)
     {
-        Material m = ofType(options.modelMaterial);
-        if (options.modelMaterial == MAT_DIFFUSE)
+        Material m = materialFromPreset(options.modelMaterial);
+        const bool takesColorTexture =
+            options.modelMaterial == PRESET_DIFFUSE || options.modelMaterial == PRESET_PLASTIC;
+        if (options.modelMaterial == PRESET_DIFFUSE)
             m.albedo = make_float3(0.8f, 0.8f, 0.8f);  // light clay
         if (options.useTextures && options.model->hasTexcoords)
         {
-            if (options.modelTextures.color && options.modelMaterial == MAT_DIFFUSE)
+            if (options.modelTextures.color && takesColorTexture)
             {
                 m.colorTexture = s.addTexture(options.modelTextures.color, true);
                 m.albedo = make_float3(1.0f, 1.0f, 1.0f);
@@ -311,11 +327,16 @@ void CornellOptions::rotateModel(int axis, float degrees)
     std::copy(out, out + 9, modelRotation);
 }
 
-bool parseMaterialType(const std::string& name, MaterialType& out)
+bool parseMaterialPreset(const std::string& name, MaterialPreset& out)
 {
-    if (name == "diffuse") { out = MAT_DIFFUSE; return true; }
-    if (name == "mirror") { out = MAT_MIRROR; return true; }
-    if (name == "glass") { out = MAT_GLASS; return true; }
+    static const char* const ids[PRESET_COUNT] = {"diffuse", "mirror", "glass",  "plastic",
+                                                  "chrome",  "brushed", "gold", "frosted"};
+    for (int i = 0; i < PRESET_COUNT; ++i)
+        if (name == ids[i])
+        {
+            out = static_cast<MaterialPreset>(i);
+            return true;
+        }
     return false;
 }
 

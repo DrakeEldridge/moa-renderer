@@ -251,7 +251,6 @@ bool resetOnRightClick(int& value, int defaultValue)
 
 enum ViewMode : int { VIEW_BEAUTY = 0, VIEW_DENOISED, VIEW_ALBEDO, VIEW_NORMAL };
 const char* const kViewNames[] = {"Beauty (raw)", "Denoised", "Albedo", "Normal"};
-const char* const kMaterialNames[] = {"Diffuse", "Mirror", "Glass"};
 
 struct ResolutionPreset
 {
@@ -511,12 +510,12 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         restart |= resetOnRightClick(settings.background, 0.0f);
 
         ImGui::SeparatorText("Scene");
-        const bool tallChanged = ImGui::Combo("Tall block", &tallMaterial, kMaterialNames, IM_ARRAYSIZE(kMaterialNames));
-        const bool shortChanged = ImGui::Combo("Short block", &shortMaterial, kMaterialNames, IM_ARRAYSIZE(kMaterialNames));
+        const bool tallChanged = ImGui::Combo("Tall block", &tallMaterial, kMaterialPresetNames, PRESET_COUNT);
+        const bool shortChanged = ImGui::Combo("Short block", &shortMaterial, kMaterialPresetNames, PRESET_COUNT);
         if (tallChanged || shortChanged)
         {
-            sceneOptions.tallBlock = static_cast<MaterialType>(tallMaterial);
-            sceneOptions.shortBlock = static_cast<MaterialType>(shortMaterial);
+            sceneOptions.tallBlock = static_cast<MaterialPreset>(tallMaterial);
+            sceneOptions.shortBlock = static_cast<MaterialPreset>(shortMaterial);
             scene = makeCornellBox(sceneOptions);
             renderer.setScene(scene);  // resets the renderer's camera; ours is reapplied on restart
             restart = true;
@@ -609,9 +608,9 @@ int runLiveView(Renderer& renderer, const LiveOptions& options)
         if (sceneOptions.model)
         {
             const char* const upNames[] = {"Y up", "Z up"};
-            if (ImGui::Combo("Material", &modelMaterial, kMaterialNames, IM_ARRAYSIZE(kMaterialNames)))
+            if (ImGui::Combo("Material", &modelMaterial, kMaterialPresetNames, PRESET_COUNT))
             {
-                sceneOptions.modelMaterial = static_cast<MaterialType>(modelMaterial);
+                sceneOptions.modelMaterial = static_cast<MaterialPreset>(modelMaterial);
                 rebuildScene = true;
             }
             if (ImGui::Combo("Up axis", &modelUp, upNames, IM_ARRAYSIZE(upNames)))

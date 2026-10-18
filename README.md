@@ -21,7 +21,8 @@ cleaning it up as it goes. A command-line batch mode is still available.
 
 - GPU path tracing with NVIDIA OptiX 9.1 (hardware ray tracing on RTX cards)
 - Global illumination (bounce light), soft shadows, next-event estimation for fast cleanup
-- Materials: diffuse, mirror, glass (with Fresnel and refraction)
+- Materials: an all-purpose standard material (roughness, metalness, specular, rough glass) plus
+  matte, mirror and glass; presets for plastic, chrome, brushed metal, gold and frosted glass
 - OBJ and STL model loading (ASCII and binary STL), smooth normals, auto-fit into the scene
 - Colour textures and normal maps (JPG, PNG, TGA, BMP), found from the .mtl file or next to the model
 - HDRI environment lighting (.hdr) with importance sampling, so sunny HDRIs render cleanly
