@@ -70,6 +70,31 @@ struct QuadLight
     float area;
 };
 
+// Extra lights (any number), sampled one at a time for direct lighting. They are not visible to
+// camera rays or mirror reflections (only their light is).
+enum LightType : unsigned int
+{
+    LIGHT_QUAD = 0,     // rectangle: position = corner, axisU / axisV = edges
+    LIGHT_DISK = 1,     // disk: position = centre, axisU / axisV = radius vectors
+    LIGHT_SPHERE = 2,   // sphere: position = centre, radius
+    LIGHT_POINT = 3,    // point: position; emission = radiant intensity (not radiance)
+    LIGHT_DISTANT = 4,  // sun: normal = direction towards the light, emission = irradiance,
+                        // cosAngle = cos(half the angular diameter)
+};
+
+struct LightSource
+{
+    unsigned int type;  // LightType
+    float3 position;
+    float3 axisU;
+    float3 axisV;
+    float3 normal;      // quad/disk: direction they emit towards; distant: direction to the light
+    float3 emission;    // radiance (quad, disk, sphere), intensity (point), irradiance (distant)
+    float radius;       // sphere
+    float area;         // quad, disk
+    float cosAngle;     // distant
+};
+
 struct LaunchParams
 {
     unsigned int width;
@@ -91,6 +116,8 @@ struct LaunchParams
     Camera camera;
     QuadLight light;
     unsigned int hasQuadLight;  // 0 when the scene is lit only by the environment
+    const LightSource* lights;  // extra lights (may be null)
+    unsigned int lightCount;
 
     // Environment (HDRI) light. envWidth == 0 means no environment image.
     cudaTextureObject_t envTexture;

@@ -40,6 +40,7 @@ struct Scene
     std::vector<SceneTexture> textures;
     QuadLight light{};
     bool hasQuadLight = true;
+    std::vector<LightSource> lights;  // extra lights: more rects, disks, spheres, points, suns
 
     // Environment light (HDRI). No image = no environment.
     HdrImagePtr environment;

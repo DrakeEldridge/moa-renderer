@@ -129,6 +129,8 @@ private:
     CudaBuffer m_indices;
     CudaBuffer m_triangleMaterial;
     CudaBuffer m_materials;
+    CudaBuffer m_lights;
+    unsigned int m_lightCount = 0;
     CudaBuffer m_gas;
 
     // GPU textures, cached by image so rebuilding the scene doesn't re-upload them.

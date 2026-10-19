@@ -210,6 +210,31 @@ extern "C" __global__ void __raygen__render()
                 }
             }
 
+            if (useNee && params.lightCount > 0)
+            {
+                // One of the extra lights, picked at random (its contribution x the light count).
+                unsigned int li = static_cast<unsigned int>(rnd(seed) * static_cast<float>(params.lightCount));
+                if (li >= params.lightCount)
+                    li = params.lightCount - 1;
+                float3 l, value;
+                float dist = 0.0f;
+                if (sampleLightSource(params.lights[li], hit.position, seed, l, dist, value))
+                {
+                    const float cosSurface = dot(n, l);
+                    if (cosSurface > 0.0f && dot(ng, l) > 0.0f)
+                    {
+                        float pdfBsdf = 0.0f;
+                        const float3 f = evalBsdf(l, pdfBsdf);
+                        if (maxComponent(f) > 0.0f &&
+                            traceShadow(hit.position + ng * kRayEpsilon, l, dist - 2.0f * kRayEpsilon))
+                        {
+                            const float3 c = throughput * f * value * (cosSurface * static_cast<float>(params.lightCount));
+                            radiance += (afterDiffuse && isStandard) ? clampCaustic(c) : c;
+                        }
+                    }
+                }
+            }
+
             if (m.type == MAT_DIFFUSE)
             {
                 // Continue the path with a cosine-weighted bounce. The cosine and pi cancel

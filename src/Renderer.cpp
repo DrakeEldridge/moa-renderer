@@ -248,6 +248,9 @@ void Renderer::setScene(const Scene& scene)
     m_materials.upload(scene.materials);
     m_cameraDesc = scene.camera;
     m_light = scene.light;
+    m_lightCount = static_cast<unsigned int>(scene.lights.size());
+    if (m_lightCount > 0)
+        m_lights.upload(scene.lights);
     buildAccel(scene);
 }
 
@@ -433,6 +436,8 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.camera = m_camera;
     lp.light = m_light;
     lp.hasQuadLight = m_hasQuadLight ? 1u : 0u;
+    lp.lights = m_lightCount > 0 ? m_lights.as<const LightSource>() : nullptr;
+    lp.lightCount = m_lightCount;
     lp.envTexture = m_envTexture;
     lp.envFunc = m_envFunc.as<const float>();
     lp.envMarginalCdf = m_envMarginal.as<const float>();
