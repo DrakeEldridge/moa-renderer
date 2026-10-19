@@ -5,6 +5,14 @@
 // the light path continues. Direct lighting from the area light is sampled explicitly
 // at every diffuse hit (next-event estimation), which is what makes the image clean up
 // quickly instead of waiting for random bounces to find the light.
+//
+// This file is the integrator (the bounce loop). The building blocks live in their own files so
+// one can be changed without touching the others:
+//   camera.cuh       pixel -> camera ray                 bsdf.cuh      materials (how light bounces)
+//   surface.cuh      material + texture maps at a hit    textures.cuh  texture/normal map lookups
+//   lights.cuh       area light sampling                 environment.cuh  HDRI dome lighting
+//   rays.cuh         ray types, hit information          sampling.cuh  random directions, MIS
+// "Claudes Folder/tools/regress.sh" (private workspace) checks that a change didn't alter renders.
 // SPDX-License-Identifier: Apache-2.0
 
 #include <optix.h>
@@ -19,264 +27,17 @@ extern "C" {
 __constant__ LaunchParams params;
 }
 
+// The building blocks, one file per job (see each file for details).
+#include "rays.cuh"         // ray types and hit information
+#include "sampling.cuh"     // random directions, frames, MIS
+#include "bsdf.cuh"         // materials
+#include "textures.cuh"     // texture maps
+#include "environment.cuh"  // HDRI lighting
+#include "lights.cuh"       // area lights
+#include "camera.cuh"       // camera rays
+#include "surface.cuh"      // material + maps at a hit point
+
 namespace {
-
-constexpr float kRayEpsilon = 1e-3f;  // offset to avoid a surface re-hitting itself
-constexpr float kRayTMax = 1e16f;
-
-// Per-ray result written by the closest-hit / miss programs.
-struct HitInfo
-{
-    float3 position;
-    float3 normal;         // geometric normal, as wound in the mesh (not yet flipped to face the ray)
-    float3 shadingNormal;  // smooth interpolated normal, on the same side as `normal`
-    float4 tangent;        // interpolated tangent (xyz) and bitangent sign (w)
-    float2 uv;
-    unsigned int materialId;
-    unsigned int hit;
-};
-
-// The radiance ray carries a pointer to a HitInfo split across two 32-bit payload slots.
-__forceinline__ __device__ void packPointer(void* ptr, unsigned int& i0, unsigned int& i1)
-{
-    const unsigned long long p = reinterpret_cast<unsigned long long>(ptr);
-    i0 = static_cast<unsigned int>(p >> 32);
-    i1 = static_cast<unsigned int>(p & 0xffffffffull);
-}
-
-__forceinline__ __device__ HitInfo* getHitInfo()
-{
-    const unsigned long long p =
-        (static_cast<unsigned long long>(optixGetPayload_0()) << 32) | optixGetPayload_1();
-    return reinterpret_cast<HitInfo*>(p);
-}
-
-__forceinline__ __device__ void traceRadiance(float3 origin, float3 direction, HitInfo& hit)
-{
-    unsigned int p0, p1;
-    packPointer(&hit, p0, p1);
-    optixTrace(params.handle, origin, direction,
-               0.0f, kRayTMax, 0.0f,  // tmin, tmax, ray time
-               OptixVisibilityMask(255), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-               RAY_TYPE_RADIANCE, RAY_TYPE_COUNT, RAY_TYPE_RADIANCE,  // SBT offset, stride, miss index
-               p0, p1);
-}
-
-// Returns true if nothing blocks the segment from origin along direction up to distance.
-__forceinline__ __device__ bool traceShadow(float3 origin, float3 direction, float distance)
-{
-    unsigned int visible = 0u;  // the shadow miss program sets this to 1
-    optixTrace(params.handle, origin, direction,
-               0.0f, distance, 0.0f,
-               OptixVisibilityMask(255),
-               OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT |
-                   OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
-               RAY_TYPE_SHADOW, RAY_TYPE_COUNT, RAY_TYPE_SHADOW,
-               visible);
-    return visible != 0u;
-}
-
-// Builds an orthonormal basis around n and returns a cosine-weighted direction.
-__forceinline__ __device__ float3 sampleCosineHemisphere(float3 n, float u1, float u2)
-{
-    const float r = sqrtf(u1);
-    const float phi = 2.0f * kPi * u2;
-    const float x = r * cosf(phi);
-    const float y = r * sinf(phi);
-    const float z = sqrtf(fmaxf(0.0f, 1.0f - u1));
-
-    const float sign = copysignf(1.0f, n.z);
-    const float a = -1.0f / (sign + n.z);
-    const float b = n.x * n.y * a;
-    const float3 t = make_float3(1.0f + sign * n.x * n.x * a, sign * b, -sign * n.x);
-    const float3 bt = make_float3(b, sign + n.y * n.y * a, -n.y);
-    return normalize(t * x + bt * y + n * z);
-}
-
-// Unpolarised Fresnel reflectance for a smooth dielectric. eta = n_incident / n_transmitted.
-// Returns 1 for total internal reflection.
-__forceinline__ __device__ float fresnelDielectric(float cosI, float eta)
-{
-    const float sin2T = eta * eta * fmaxf(0.0f, 1.0f - cosI * cosI);
-    if (sin2T >= 1.0f)
-        return 1.0f;
-    const float cosT = sqrtf(1.0f - sin2T);
-    const float rs = (eta * cosI - cosT) / (eta * cosI + cosT);
-    const float rp = (cosI - eta * cosT) / (cosI + eta * cosT);
-    return 0.5f * (rs * rs + rp * rp);
-}
-
-__forceinline__ __device__ float3 refractDir(float3 i, float3 n, float eta, float cosI)
-{
-    const float sin2T = eta * eta * fmaxf(0.0f, 1.0f - cosI * cosI);
-    const float cosT = sqrtf(fmaxf(0.0f, 1.0f - sin2T));
-    return normalize(i * eta + n * (eta * cosI - cosT));
-}
-
-// ---------------------------------------------------------------------------------------
-// Standard material: Lambert diffuse under a GGX microfacet reflection layer, with
-// metalness (the base colour tints the reflection and there is no diffuse) and an optional
-// rough dielectric (glass) mode. Microfacet maths: Walter et al. 2007 (GGX), Heitz 2014
-// (Smith masking), Heitz 2018 (sampling the visible normals).
-// ---------------------------------------------------------------------------------------
-
-struct Frame
-{
-    float3 t, b, n;
-    __forceinline__ __device__ float3 toLocal(float3 v) const { return make_float3(dot(v, t), dot(v, b), dot(v, n)); }
-    __forceinline__ __device__ float3 toWorld(float3 v) const { return t * v.x + b * v.y + n * v.z; }
-};
-
-__forceinline__ __device__ Frame makeFrame(float3 n)
-{
-    const float sign = copysignf(1.0f, n.z);
-    const float a = -1.0f / (sign + n.z);
-    const float b = n.x * n.y * a;
-    Frame f;
-    f.t = make_float3(1.0f + sign * n.x * n.x * a, sign * b, -sign * n.x);
-    f.b = make_float3(b, sign + n.y * n.y * a, -n.y);
-    f.n = n;
-    return f;
-}
-
-__forceinline__ __device__ float ggxD(float a2, float cosH)
-{
-    const float d = cosH * cosH * (a2 - 1.0f) + 1.0f;
-    return a2 / (kPi * d * d);
-}
-
-__forceinline__ __device__ float smithLambda(float a2, float cosV)
-{
-    const float c2 = fmaxf(cosV * cosV, 1e-8f);
-    return 0.5f * (-1.0f + sqrtf(1.0f + a2 * (1.0f - c2) / c2));
-}
-
-// Samples a microfacet normal among those visible from wo (local frame, wo.z > 0).
-__forceinline__ __device__ float3 sampleGgxVisibleNormal(float3 wo, float alpha, float u1, float u2)
-{
-    const float3 vh = normalize(make_float3(alpha * wo.x, alpha * wo.y, wo.z));
-    const float lensq = vh.x * vh.x + vh.y * vh.y;
-    const float3 t1 = lensq > 0.0f ? make_float3(-vh.y, vh.x, 0.0f) * (1.0f / sqrtf(lensq)) : make_float3(1.0f, 0.0f, 0.0f);
-    const float3 t2 = cross(vh, t1);
-    const float r = sqrtf(u1);
-    const float phi = 2.0f * kPi * u2;
-    const float p1 = r * cosf(phi);
-    float p2 = r * sinf(phi);
-    const float s = 0.5f * (1.0f + vh.z);
-    p2 = (1.0f - s) * sqrtf(fmaxf(0.0f, 1.0f - p1 * p1)) + s * p2;
-    const float3 nh = t1 * p1 + t2 * p2 + vh * sqrtf(fmaxf(0.0f, 1.0f - p1 * p1 - p2 * p2));
-    return normalize(make_float3(alpha * nh.x, alpha * nh.y, fmaxf(1e-6f, nh.z)));
-}
-
-__forceinline__ __device__ float luminance(float3 c) { return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; }
-
-__forceinline__ __device__ float3 schlick(float3 f0, float cosTheta)
-{
-    const float m = clampf(1.0f - cosTheta, 0.0f, 1.0f);
-    const float m5 = m * m * m * m * m;
-    return f0 + (make_float3(1.0f, 1.0f, 1.0f) - f0) * m5;
-}
-
-// Everything the opaque standard material needs at one hit point.
-struct StandardBsdf
-{
-    float3 base;
-    float metallic;
-    float specular;
-    float ior;
-    float alpha;       // GGX roughness (roughness squared)
-    bool deltaSpecular;  // roughness ~ 0: a perfect mirror layer
-    float specProb;    // probability of sampling the reflection layer (from wo)
-
-    __forceinline__ __device__ float dielectricF(float cosTheta) const
-    {
-        return specular * fresnelDielectric(cosTheta, 1.0f / ior);
-    }
-    __forceinline__ __device__ float3 reflectionColor(float cosTheta) const
-    {
-        const float fd = dielectricF(cosTheta);
-        return make_float3(fd, fd, fd) * (1.0f - metallic) + schlick(base, cosTheta) * metallic;
-    }
-    __forceinline__ __device__ float3 diffuseColor(float cosWo) const
-    {
-        // Light reflected by the top layer doesn't reach the diffuse base.
-        return base * ((1.0f - metallic) * (1.0f - dielectricF(cosWo)) * kInvPi);
-    }
-};
-
-__forceinline__ __device__ StandardBsdf makeStandardBsdf(const Material& m, float3 albedo, float cosWo)
-{
-    StandardBsdf s;
-    s.base = albedo;
-    s.metallic = clampf(m.metallic, 0.0f, 1.0f);
-    s.specular = fmaxf(m.specular, 0.0f);
-    s.ior = fmaxf(m.ior, 1.0001f);
-    const float rough = clampf(m.roughness, 0.0f, 1.0f);
-    s.deltaSpecular = rough < 0.02f;
-    s.alpha = fmaxf(rough * rough, 1e-4f);
-    // Pick the reflection layer roughly in proportion to how much light it carries, but often
-    // enough that glossy reflections clean up.
-    const float wSpec = luminance(s.reflectionColor(cosWo));
-    const float wDiff = luminance(s.diffuseColor(cosWo)) * kPi;
-    const float total = wSpec + wDiff;
-    s.specProb = total > 0.0f ? clampf(wSpec / total, 0.0f, 1.0f) : 0.0f;
-    if (wSpec > 0.0f && wDiff > 0.0f)
-        s.specProb = clampf(s.specProb, 0.25f, 0.9f);
-    return s;
-}
-
-// BSDF value (without the cosine) and the pdf of choosing wi by sampleStandard(). Local frame,
-// wo.z > 0. The perfect-mirror layer (deltaSpecular) can't be evaluated and is left out.
-__forceinline__ __device__ float3 evalStandard(const StandardBsdf& s, float3 wo, float3 wi, float& pdf)
-{
-    pdf = 0.0f;
-    if (wi.z <= 0.0f || wo.z <= 0.0f)
-        return make_float3(0.0f, 0.0f, 0.0f);
-    float3 f = s.diffuseColor(wo.z);
-    pdf = (1.0f - s.specProb) * wi.z * kInvPi;
-    if (!s.deltaSpecular && s.specProb > 0.0f)
-    {
-        const float3 h = normalize(wo + wi);
-        const float a2 = s.alpha * s.alpha;
-        const float d = ggxD(a2, h.z);
-        const float lo = smithLambda(a2, wo.z);
-        const float g2 = 1.0f / (1.0f + lo + smithLambda(a2, wi.z));
-        const float voh = fmaxf(dot(wo, h), 1e-6f);
-        f += s.reflectionColor(voh) * (d * g2 / (4.0f * wo.z * wi.z));
-        // Visible-normal sampling: pdf(wi) = G1(wo) D / (4 wo.z).
-        pdf += s.specProb * d / ((1.0f + lo) * 4.0f * wo.z);
-    }
-    return f;
-}
-
-// Samples a bounce. Returns the weight f*cos/pdf; delta = a perfect-mirror bounce.
-__forceinline__ __device__ float3 sampleStandard(const StandardBsdf& s, float3 wo, unsigned int& seed, float3& wi,
-                                                 float& pdf, bool& delta)
-{
-    delta = false;
-    if (rnd(seed) < s.specProb)
-    {
-        if (s.deltaSpecular)
-        {
-            wi = make_float3(-wo.x, -wo.y, wo.z);
-            delta = true;
-            pdf = 0.0f;
-            return s.reflectionColor(wo.z) * (1.0f / s.specProb);
-        }
-        const float3 h = sampleGgxVisibleNormal(wo, s.alpha, rnd(seed), rnd(seed));
-        wi = reflect(-wo, h);
-    }
-    else
-    {
-        const float r = sqrtf(rnd(seed));
-        const float phi = 2.0f * kPi * rnd(seed);
-        wi = make_float3(r * cosf(phi), r * sinf(phi), sqrtf(fmaxf(0.0f, 1.0f - r * r)));
-    }
-    if (wi.z <= 0.0f)
-        return make_float3(0.0f, 0.0f, 0.0f);
-    const float3 f = evalStandard(s, wo, wi, pdf);
-    return pdf > 0.0f ? f * (wi.z / pdf) : make_float3(0.0f, 0.0f, 0.0f);
-}
 
 // Firefly control: limits how bright a caustic contribution can be (light that went
 // diffuse -> mirror/glass -> light). Those paths are found only rarely by random bounces and
@@ -288,115 +49,6 @@ __forceinline__ __device__ float3 clampCaustic(float3 c)
         return c;
     const float m = maxComponent(c);
     return m > params.maxSampleValue ? c * (params.maxSampleValue / m) : c;
-}
-
-__forceinline__ __device__ float4 sampleTexture(int index, float2 uv, unsigned int flags)
-{
-    const float v = (flags & MATFLAG_FLIP_V) ? uv.y : 1.0f - uv.y;  // image row 0 is the top
-    return tex2D<float4>(params.textures[index], uv.x, v);
-}
-
-// Bends the smooth normal using the normal map (tangent space -> world space).
-__forceinline__ __device__ float3 applyNormalMap(const Material& m, const HitInfo& hit)
-{
-    const float3 N = hit.shadingNormal;
-    const float4 t = sampleTexture(m.normalTexture, hit.uv, m.flags);
-    float3 tn = make_float3(t.x * 2.0f - 1.0f, t.y * 2.0f - 1.0f, t.z * 2.0f - 1.0f);
-    if (m.flags & MATFLAG_FLIP_NORMAL_GREEN)
-        tn.y = -tn.y;
-    tn.x *= m.normalStrength;
-    tn.y *= m.normalStrength;
-    float3 T = make_float3(hit.tangent.x, hit.tangent.y, hit.tangent.z);
-    T = T - N * dot(N, T);
-    const float tl = length(T);
-    if (tl < 1e-6f)
-        return N;
-    T = T / tl;
-    const float3 B = cross(N, T) * hit.tangent.w;
-    const float3 mapped = normalize(T * tn.x + B * tn.y + N * fmaxf(tn.z, 1e-3f));
-    // Never let the bent normal face away from the real surface (it causes black spots).
-    return dot(mapped, hit.normal) > 0.05f ? mapped : N;
-}
-
-// ---- Environment (HDRI) lighting -------------------------------------------------------------
-// Equirectangular mapping: u wraps around the horizon, v runs from straight up (0) to down (1).
-
-__forceinline__ __device__ float2 envDirectionToUv(float3 d)
-{
-    float u = 0.5f + (atan2f(d.x, -d.z) - params.envRotation) * (0.5f * kInvPi);
-    u -= floorf(u);
-    const float v = acosf(clampf(d.y, -1.0f, 1.0f)) * kInvPi;
-    return make_float2(u, v);
-}
-
-__forceinline__ __device__ float3 envUvToDirection(float u, float v)
-{
-    const float phi = (u - 0.5f) * 2.0f * kPi + params.envRotation;
-    const float theta = v * kPi;
-    const float st = sinf(theta);
-    return make_float3(st * sinf(phi), cosf(theta), -st * cosf(phi));
-}
-
-__forceinline__ __device__ float3 envRadiance(float3 d)
-{
-    const float2 uv = envDirectionToUv(d);
-    const float4 c = tex2D<float4>(params.envTexture, uv.x, uv.y);
-    return make_float3(c.x, c.y, c.z) * params.envIntensity;
-}
-
-// Probability (per unit solid angle) that sampleEnvironment() picks direction d.
-__forceinline__ __device__ float envPdf(float3 d)
-{
-    const float2 uv = envDirectionToUv(d);
-    const unsigned int xi = static_cast<unsigned int>(uv.x * params.envWidth);
-    const unsigned int yi = static_cast<unsigned int>(uv.y * params.envHeight);
-    const unsigned int x = xi < params.envWidth ? xi : params.envWidth - 1;
-    const unsigned int y = yi < params.envHeight ? yi : params.envHeight - 1;
-    const float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - d.y * d.y));
-    if (sinTheta <= 1e-6f || params.envFuncIntegral <= 0.0f)
-        return 0.0f;
-    const float pdfUv = params.envFunc[y * params.envWidth + x] / params.envFuncIntegral;
-    return pdfUv / (2.0f * kPi * kPi * sinTheta);
-}
-
-// Finds the last index i in cdf[0..count] with cdf[i] <= value (cdf is increasing, cdf[0] = 0).
-__forceinline__ __device__ unsigned int findInterval(const float* cdf, unsigned int count, float value)
-{
-    unsigned int lo = 0, hi = count;  // answer in [lo, hi)
-    while (hi - lo > 1)
-    {
-        const unsigned int mid = (lo + hi) / 2;
-        if (cdf[mid] <= value)
-            lo = mid;
-        else
-            hi = mid;
-    }
-    return lo;
-}
-
-// Picks a direction towards the environment, favouring bright areas (sun, windows, softboxes).
-__forceinline__ __device__ float3 sampleEnvironment(float r1, float r2, float& pdf)
-{
-    const unsigned int W = params.envWidth, H = params.envHeight;
-    const unsigned int y = findInterval(params.envMarginalCdf, H, r1);
-    const float m0 = params.envMarginalCdf[y], m1 = params.envMarginalCdf[y + 1];
-    const float dv = m1 > m0 ? (r1 - m0) / (m1 - m0) : 0.5f;
-    const float* row = params.envConditionalCdf + static_cast<size_t>(y) * (W + 1);
-    const unsigned int x = findInterval(row, W, r2);
-    const float c0 = row[x], c1 = row[x + 1];
-    const float du = c1 > c0 ? (r2 - c0) / (c1 - c0) : 0.5f;
-    const float u = (x + du) / W, v = (y + dv) / H;
-    const float3 d = envUvToDirection(u, v);
-    const float sinTheta = sinf(v * kPi);
-    pdf = sinTheta > 1e-6f ? (params.envFunc[y * W + x] / params.envFuncIntegral) / (2.0f * kPi * kPi * sinTheta) : 0.0f;
-    return d;
-}
-
-// Power heuristic for combining two sampling strategies (multiple importance sampling).
-__forceinline__ __device__ float misWeight(float pdfA, float pdfB)
-{
-    const float a = pdfA * pdfA, b = pdfB * pdfB;
-    return a + b > 0.0f ? a / (a + b) : 0.0f;
 }
 
 __forceinline__ __device__ bool isEmissive(const Material& m)
@@ -422,11 +74,8 @@ extern "C" __global__ void __raygen__render()
 
     for (unsigned int s = 0; s < params.samplesPerLaunch; ++s)
     {
-        // Jittered position inside the pixel gives free anti-aliasing.
-        const float sx = (static_cast<float>(idx.x) + rnd(seed)) / static_cast<float>(params.width);
-        const float sy = (static_cast<float>(idx.y) + rnd(seed)) / static_cast<float>(params.height);
-        float3 origin = cam.eye;
-        float3 direction = normalize(cam.u * (2.0f * sx - 1.0f) + cam.v * (2.0f * sy - 1.0f) + cam.w);
+        float3 origin, direction;
+        generateCameraRay(cam, idx, seed, origin, direction);
 
         float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
         float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
@@ -469,26 +118,13 @@ extern "C" __global__ void __raygen__render()
                 break;
             }
 
-            Material m = params.materials[hit.materialId];
-            // Roughness / metalness maps replace the slider values (as a connected input does in
-            // MaterialX). Greyscale, linear: the red channel is used.
-            if (m.roughnessTexture >= 0)
-                m.roughness = sampleTexture(m.roughnessTexture, hit.uv, m.flags).x;
-            if (m.metallicTexture >= 0)
-                m.metallic = sampleTexture(m.metallicTexture, hit.uv, m.flags).x;
-            const bool frontFace = dot(direction, hit.normal) < 0.0f;
-            // ng: true surface side (used to offset new rays so they don't re-hit the surface).
-            // n: smooth shading normal on the same side, used for lighting and reflection.
-            const float3 ng = frontFace ? hit.normal : -hit.normal;
-            const float3 mappedNormal = m.normalTexture >= 0 ? applyNormalMap(m, hit) : hit.shadingNormal;
-            const float3 n = frontFace ? mappedNormal : -mappedNormal;
-
-            float3 albedo = m.albedo;
-            if (m.colorTexture >= 0)
-            {
-                const float4 c = sampleTexture(m.colorTexture, hit.uv, m.flags);
-                albedo = albedo * make_float3(c.x, c.y, c.z);
-            }
+            // The material at this point, with its texture maps applied.
+            const SurfacePoint sp = resolveSurface(hit, direction);
+            const Material& m = sp.m;
+            const bool frontFace = sp.frontFace;
+            const float3 ng = sp.ng;
+            const float3 n = sp.n;
+            const float3 albedo = sp.albedo;
 
             if (depth == 0)
             {
@@ -552,7 +188,7 @@ extern "C" __global__ void __raygen__render()
             if (useNee && params.hasQuadLight)
             {
                 // Pick a point on the area light and test if it is visible.
-                const float3 lightPoint = light.corner + light.edge1 * rnd(seed) + light.edge2 * rnd(seed);
+                const float3 lightPoint = sampleQuadLightPoint(light, seed);
                 const float3 toLight = lightPoint - hit.position;
                 const float dist2 = dot(toLight, toLight);
                 const float dist = sqrtf(dist2);

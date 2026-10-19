@@ -37,7 +37,14 @@ endif()
 message(STATUS "OptiX headers: ${OPTIX_INCLUDE_DIR}")
 
 # --- GPU programs (compiled to PTX, built into the engine library) -----------------------
-add_library(moa_device OBJECT src/device/pathtracer.cu)
+set(MOA_DEVICE_HEADERS
+    src/device/LaunchParams.h src/device/random.h src/device/vec_math.h
+    src/device/rays.cuh src/device/sampling.cuh src/device/bsdf.cuh src/device/textures.cuh
+    src/device/surface.cuh src/device/environment.cuh src/device/lights.cuh src/device/camera.cuh)
+add_library(moa_device OBJECT src/device/pathtracer.cu ${MOA_DEVICE_HEADERS})
+# Rebuild the GPU programs whenever any of their building blocks change.
+list(TRANSFORM MOA_DEVICE_HEADERS PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/" OUTPUT_VARIABLE _moa_device_deps)
+set_source_files_properties(src/device/pathtracer.cu PROPERTIES OBJECT_DEPENDS "${_moa_device_deps}")
 set_target_properties(moa_device PROPERTIES
     CUDA_PTX_COMPILATION ON
     CUDA_ARCHITECTURES 75)  # Turing (RTX 20-series) and newer, which OptiX 9 requires
