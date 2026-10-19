@@ -124,6 +124,11 @@ extern "C" __global__ void __raygen__render()
             const bool frontFace = sp.frontFace;
             const float3 ng = sp.ng;
             const float3 n = sp.n;
+            // Start point for rays leaving this side. On smooth low-poly meshes it is lifted off the
+            // flat triangle towards the smooth surface, so facets don't shadow their neighbours
+            // (the jagged "shadow terminator"). Light is accepted wherever the smooth normal faces it;
+            // the shadow ray from this lifted point decides if the flat facet really blocks it.
+            const float3 outside = (frontFace ? hit.shadowPosition : hit.shadowPositionBack) + ng * kRayEpsilon;
             const float3 albedo = sp.albedo;
 
             if (depth == 0)
@@ -172,11 +177,11 @@ extern "C" __global__ void __raygen__render()
                 float pdfLight = 0.0f;
                 const float3 l = sampleEnvironment(rnd(seed), rnd(seed), pdfLight);
                 const float cosSurface = dot(n, l);
-                if (pdfLight > 0.0f && cosSurface > 0.0f && dot(ng, l) > 0.0f)
+                if (pdfLight > 0.0f && cosSurface > 0.0f)
                 {
                     float pdfBsdf = 0.0f;
                     const float3 f = evalBsdf(l, pdfBsdf);
-                    if (maxComponent(f) > 0.0f && visibleThroughCutouts(hit.position + ng * kRayEpsilon, l, kRayTMax, seed))
+                    if (maxComponent(f) > 0.0f && visibleThroughCutouts(outside, l, kRayTMax, seed))
                     {
                         const float3 le = envRadiance(l);
                         const float3 c = throughput * f * le * (cosSurface / pdfLight * misWeight(pdfLight, pdfBsdf));
@@ -195,12 +200,12 @@ extern "C" __global__ void __raygen__render()
                 const float3 l = toLight / dist;
                 const float cosSurface = dot(n, l);
                 const float cosLight = -dot(light.normal, l);
-                if (cosSurface > 0.0f && cosLight > 0.0f && dot(ng, l) > 0.0f)
+                if (cosSurface > 0.0f && cosLight > 0.0f)
                 {
                     float pdfBsdf = 0.0f;
                     const float3 f = evalBsdf(l, pdfBsdf);
-                    const float3 shadowOrigin = hit.position + ng * kRayEpsilon;
-                    if (maxComponent(f) > 0.0f && visibleThroughCutouts(shadowOrigin, l, dist - 2.0f * kRayEpsilon, seed))
+                    // The shadow ray aims at the light point from where it actually starts.
+                    if (maxComponent(f) > 0.0f && visibleToPoint(outside, lightPoint, seed))
                     {
                         // BSDF * Le * geometry term / pdf(area), with pdf = 1/area.
                         const float g = cosSurface * cosLight / dist2;
@@ -221,12 +226,13 @@ extern "C" __global__ void __raygen__render()
                 if (sampleLightSource(params.lights[li], hit.position, seed, l, dist, value))
                 {
                     const float cosSurface = dot(n, l);
-                    if (cosSurface > 0.0f && dot(ng, l) > 0.0f)
+                    if (cosSurface > 0.0f)
                     {
                         float pdfBsdf = 0.0f;
                         const float3 f = evalBsdf(l, pdfBsdf);
                         if (maxComponent(f) > 0.0f &&
-                            visibleThroughCutouts(hit.position + ng * kRayEpsilon, l, dist - 2.0f * kRayEpsilon, seed))
+                            (dist > 1e15f ? visibleThroughCutouts(outside, l, kRayTMax, seed)
+                                          : visibleToPoint(outside, hit.position + l * dist, seed)))
                         {
                             const float3 c = throughput * f * value * (cosSurface * static_cast<float>(params.lightCount));
                             radiance += (afterDiffuse && isStandard) ? clampCaustic(c) : c;
@@ -240,7 +246,7 @@ extern "C" __global__ void __raygen__render()
                 // Continue the path with a cosine-weighted bounce. The cosine and pi cancel
                 // against the pdf, leaving just the albedo.
                 direction = sampleCosineHemisphere(n, rnd(seed), rnd(seed));
-                origin = hit.position + ng * kRayEpsilon;
+                origin = outside;
                 throughput *= albedo;
                 countEmission = false;  // direct light was already counted by NEE
                 afterDiffuse = true;
@@ -258,7 +264,7 @@ extern "C" __global__ void __raygen__render()
                 if (maxComponent(weight) <= 0.0f)
                     break;
                 direction = frame.toWorld(wiLocal);
-                origin = hit.position + ng * kRayEpsilon;
+                origin = outside;
                 throughput *= weight;
                 if (delta)
                     countEmission = true;  // mirror-sharp reflection: lights are seen directly
@@ -275,7 +281,7 @@ extern "C" __global__ void __raygen__render()
             else if (m.type == MAT_MIRROR)
             {
                 direction = reflect(direction, n);
-                origin = hit.position + ng * kRayEpsilon;
+                origin = outside;
                 throughput *= albedo;
                 countEmission = true;
             }
@@ -294,7 +300,7 @@ extern "C" __global__ void __raygen__render()
                     break;
                 const float g1 = 1.0f / (1.0f + smithLambda(alpha * alpha, fabsf(wiLocal.z)));
                 direction = frame.toWorld(wiLocal);
-                origin = hit.position + (reflected ? ng : -ng) * kRayEpsilon;
+                origin = reflected ? outside : hit.position - ng * kRayEpsilon;
                 throughput *= albedo * g1;
                 countEmission = true;
             }
@@ -306,7 +312,7 @@ extern "C" __global__ void __raygen__render()
                 if (rnd(seed) < reflectance)
                 {
                     direction = reflect(direction, n);
-                    origin = hit.position + ng * kRayEpsilon;
+                    origin = outside;
                 }
                 else
                 {
@@ -385,6 +391,30 @@ extern "C" __global__ void __closesthit__radiance()
     const float len = length(ns);
     ns = len > 0.0f ? ns / len : ng;
     hit->shadingNormal = dot(ns, ng) < 0.0f ? -ns : ns;  // keep it on the geometric side
+
+    // Shadow terminator fix (Hanika 2021, "Hacking the Shadow Terminator"): push the ray start
+    // point out of each vertex's tangent plane, blended by the barycentrics. Flat areas (vertex
+    // normals = face normal) don't move at all.
+    {
+        const float w0 = 1.0f - bary.x - bary.y;
+        const float3 p = hit->position;
+        float3 front = make_float3(0.0f, 0.0f, 0.0f);
+        float3 back = make_float3(0.0f, 0.0f, 0.0f);
+        const float3 vp[3] = {v0, v1, v2};
+        const float3 vn[3] = {params.normals[tri.x], params.normals[tri.y], params.normals[tri.z]};
+        const float wb[3] = {w0, bary.x, bary.y};
+        bool flat = true;
+        for (int i = 0; i < 3; ++i)
+        {
+            const float3 nv = dot(vn[i], ng) < 0.0f ? -vn[i] : vn[i];
+            flat = flat && dot(nv, ng) > 0.99999f;
+            const float d = dot(p - vp[i], nv);
+            front = front - nv * (fminf(0.0f, d) * wb[i]);  // lift out on the `normal` side
+            back = back - nv * (fmaxf(0.0f, d) * wb[i]);    // and on the other side
+        }
+        hit->shadowPosition = flat ? p : p + front;  // flat triangles: nothing to fix
+        hit->shadowPositionBack = flat ? p : p + back;
+    }
 
     const float b0 = 1.0f - bary.x - bary.y;
     const float2 t0 = params.texcoords[tri.x], t1 = params.texcoords[tri.y], t2 = params.texcoords[tri.z];

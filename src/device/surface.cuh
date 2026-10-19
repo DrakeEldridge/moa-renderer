@@ -76,6 +76,16 @@ __forceinline__ __device__ bool visibleThroughCutouts(float3 origin, float3 dire
     return false;
 }
 
+// Shadow test from `origin` to a point on a light.
+__forceinline__ __device__ bool visibleToPoint(float3 origin, float3 target, unsigned int& seed)
+{
+    const float3 d = target - origin;
+    const float len = length(d);
+    if (len <= 2.0f * kRayEpsilon)
+        return true;
+    return visibleThroughCutouts(origin, d / len, len - 2.0f * kRayEpsilon, seed);
+}
+
 __forceinline__ __device__ SurfacePoint resolveSurface(const HitInfo& hit, float3 direction)
 {
     SurfacePoint sp;

@@ -14,6 +14,8 @@ struct HitInfo
     float3 position;
     float3 normal;         // geometric normal, as wound in the mesh (not yet flipped to face the ray)
     float3 shadingNormal;  // smooth interpolated normal, on the same side as `normal`
+    float3 shadowPosition;     // where rays leaving the `normal` side start (shadow terminator fix)
+    float3 shadowPositionBack; // the same for rays leaving the other side
     float4 tangent;        // interpolated tangent (xyz) and bitangent sign (w)
     float2 uv;
     unsigned int materialId;
