@@ -35,12 +35,12 @@ __forceinline__ __device__ HitInfo* getHitInfo()
     return reinterpret_cast<HitInfo*>(p);
 }
 
-__forceinline__ __device__ void traceRadiance(float3 origin, float3 direction, HitInfo& hit)
+__forceinline__ __device__ void traceRadiance(float3 origin, float3 direction, HitInfo& hit, float tmax = kRayTMax)
 {
     unsigned int p0, p1;
     packPointer(&hit, p0, p1);
     optixTrace(params.handle, origin, direction,
-               0.0f, kRayTMax, 0.0f,  // tmin, tmax, ray time
+               0.0f, tmax, 0.0f,  // tmin, tmax, ray time
                OptixVisibilityMask(255), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
                RAY_TYPE_RADIANCE, RAY_TYPE_COUNT, RAY_TYPE_RADIANCE,  // SBT offset, stride, miss index
                p0, p1);

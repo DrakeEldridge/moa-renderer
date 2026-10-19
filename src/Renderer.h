@@ -155,6 +155,7 @@ private:
     float m_envRotation = 0.0f;  // radians
     bool m_envVisible = true;
     bool m_hasQuadLight = true;
+    bool m_hasCutouts = false;
     void uploadEnvironment(const HdrImagePtr& image);
     void uploadTextures(const Scene& scene);
     void releaseTexture(GpuTexture& texture);

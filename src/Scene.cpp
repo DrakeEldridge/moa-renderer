@@ -28,6 +28,8 @@ Material diffuse(float r, float g, float b)
     m.normalTexture = -1;
     m.roughnessTexture = -1;
     m.metallicTexture = -1;
+    m.opacityTexture = -1;
+    m.opacityChannel = 3;
     m.flags = 0;
     m.normalStrength = 1.0f;
     return m;

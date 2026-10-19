@@ -18,6 +18,64 @@ struct SurfacePoint
     bool frontFace;  // the ray hit the side the mesh normal points to
 };
 
+// Coverage / cut-outs: does this ray go through the surface here (a hole in a mesh guard, the
+// see-through part of a visor)? Soft coverage lets a random share of rays through.
+__forceinline__ __device__ bool passesThrough(const HitInfo& hit, unsigned int& seed)
+{
+    const Material& m = params.materials[hit.materialId];
+    float opacity = 1.0f - m.transparency;
+    if (m.opacityTexture >= 0)
+    {
+        const float4 t = sampleTexture(m.opacityTexture, hit.uv, m.flags);
+        opacity *= m.opacityChannel == 3 ? t.w : t.x;
+    }
+    if (opacity >= 1.0f)
+        return false;
+    if (m.opacityThreshold > 0.0f)
+        return opacity < m.opacityThreshold;
+    return rnd(seed) >= opacity;
+}
+
+// Traces a camera / bounce ray, stepping through holes and see-through parts.
+__forceinline__ __device__ void traceThroughCutouts(float3 origin, float3 direction, HitInfo& hit, unsigned int& seed)
+{
+    traceRadiance(origin, direction, hit);
+    if (!params.hasCutouts)
+        return;
+    for (int i = 0; i < 64 && hit.hit && passesThrough(hit, seed); ++i)
+    {
+        const float3 facing = dot(direction, hit.normal) < 0.0f ? hit.normal : -hit.normal;
+        origin = hit.position - facing * kRayEpsilon;
+        hit.hit = 0u;
+        traceRadiance(origin, direction, hit);
+    }
+}
+
+// Shadow test that lets light through holes and see-through parts.
+__forceinline__ __device__ bool visibleThroughCutouts(float3 origin, float3 direction, float distance,
+                                                      unsigned int& seed)
+{
+    if (!params.hasCutouts)
+        return traceShadow(origin, direction, distance);
+    for (int i = 0; i < 64; ++i)
+    {
+        HitInfo h;
+        h.hit = 0u;
+        traceRadiance(origin, direction, h, distance);
+        if (!h.hit)
+            return true;
+        if (!passesThrough(h, seed))
+            return false;
+        const float travelled = length(h.position - origin);
+        const float3 facing = dot(direction, h.normal) < 0.0f ? h.normal : -h.normal;
+        origin = h.position - facing * kRayEpsilon;
+        distance -= travelled + kRayEpsilon;
+        if (distance <= 0.0f)
+            return true;
+    }
+    return false;
+}
+
 __forceinline__ __device__ SurfacePoint resolveSurface(const HitInfo& hit, float3 direction)
 {
     SurfacePoint sp;

@@ -48,6 +48,11 @@ struct Material
     float transmission;   // > 0.5 = glass-like: albedo tints the light passing through
     int roughnessTexture; // replaces `roughness` (red channel, linear), or -1
     int metallicTexture;  // replaces `metallic` (red channel, linear), or -1
+    // Coverage (cut-outs, see-through surfaces like a visor): how much of the surface is there.
+    float transparency;          // constant see-through amount when there's no map (0 = solid)
+    int opacityTexture;          // coverage map (1 = solid, 0 = hole), or -1
+    unsigned int opacityChannel; // which channel of the map: 0 = red, 3 = alpha
+    float opacityThreshold;      // > 0: hard cut-out (coverage below it = hole); 0: soft
 };
 
 // Pinhole camera. Primary ray direction = normalize(x * u + y * v + w) for x, y in [-1, 1].
@@ -118,6 +123,7 @@ struct LaunchParams
     Camera camera;
     QuadLight light;
     unsigned int hasQuadLight;  // 0 when the scene is lit only by the environment
+    unsigned int hasCutouts;    // any material with coverage < 1 (rays then check for holes)
     const LightSource* lights;  // extra lights (may be null)
     unsigned int lightCount;
 

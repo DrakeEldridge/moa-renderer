@@ -90,7 +90,7 @@ extern "C" __global__ void __raygen__render()
         {
             HitInfo hit;
             hit.hit = 0u;
-            traceRadiance(origin, direction, hit);
+            traceThroughCutouts(origin, direction, hit, seed);
             if (!hit.hit)
             {
                 if (params.envWidth > 0)
@@ -176,7 +176,7 @@ extern "C" __global__ void __raygen__render()
                 {
                     float pdfBsdf = 0.0f;
                     const float3 f = evalBsdf(l, pdfBsdf);
-                    if (maxComponent(f) > 0.0f && traceShadow(hit.position + ng * kRayEpsilon, l, kRayTMax))
+                    if (maxComponent(f) > 0.0f && visibleThroughCutouts(hit.position + ng * kRayEpsilon, l, kRayTMax, seed))
                     {
                         const float3 le = envRadiance(l);
                         const float3 c = throughput * f * le * (cosSurface / pdfLight * misWeight(pdfLight, pdfBsdf));
@@ -200,7 +200,7 @@ extern "C" __global__ void __raygen__render()
                     float pdfBsdf = 0.0f;
                     const float3 f = evalBsdf(l, pdfBsdf);
                     const float3 shadowOrigin = hit.position + ng * kRayEpsilon;
-                    if (maxComponent(f) > 0.0f && traceShadow(shadowOrigin, l, dist - 2.0f * kRayEpsilon))
+                    if (maxComponent(f) > 0.0f && visibleThroughCutouts(shadowOrigin, l, dist - 2.0f * kRayEpsilon, seed))
                     {
                         // BSDF * Le * geometry term / pdf(area), with pdf = 1/area.
                         const float g = cosSurface * cosLight / dist2;
@@ -226,7 +226,7 @@ extern "C" __global__ void __raygen__render()
                         float pdfBsdf = 0.0f;
                         const float3 f = evalBsdf(l, pdfBsdf);
                         if (maxComponent(f) > 0.0f &&
-                            traceShadow(hit.position + ng * kRayEpsilon, l, dist - 2.0f * kRayEpsilon))
+                            visibleThroughCutouts(hit.position + ng * kRayEpsilon, l, dist - 2.0f * kRayEpsilon, seed))
                         {
                             const float3 c = throughput * f * value * (cosSurface * static_cast<float>(params.lightCount));
                             radiance += (afterDiffuse && isStandard) ? clampCaustic(c) : c;

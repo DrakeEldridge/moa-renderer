@@ -22,6 +22,15 @@ namespace moa {
 
 namespace {
 
+// Does any material have holes or see-through parts? (Rays then check for them.)
+bool hasCutouts(const std::vector<Material>& materials)
+{
+    for (const Material& m : materials)
+        if (m.transparency > 0.0f || m.opacityTexture >= 0)
+            return true;
+    return false;
+}
+
 // Shader binding table record. The header is filled by OptiX; our programs read all data
 // from the launch parameters, so the payload is a placeholder.
 struct alignas(OPTIX_SBT_RECORD_ALIGNMENT) EmptyRecord
@@ -244,6 +253,7 @@ void Renderer::setScene(const Scene& scene)
     uploadEnvironment(scene.environment);
     setEnvironmentParams(scene.environmentIntensity, scene.environmentRotation, scene.environmentVisible);
     m_hasQuadLight = scene.hasQuadLight;
+    m_hasCutouts = hasCutouts(scene.materials);
     m_triangleMaterial.upload(scene.triangleMaterial);
     m_materials.upload(scene.materials);
     m_cameraDesc = scene.camera;
@@ -257,6 +267,8 @@ void Renderer::setScene(const Scene& scene)
 void Renderer::updateMaterials(const Scene& scene)
 {
     m_materials.upload(scene.materials);
+    m_hasCutouts = hasCutouts(scene.materials);
+    m_launch.hasCutouts = m_hasCutouts ? 1u : 0u;
     m_launch.materials = m_materials.as<const Material>();
 }
 
@@ -436,6 +448,7 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.camera = m_camera;
     lp.light = m_light;
     lp.hasQuadLight = m_hasQuadLight ? 1u : 0u;
+    lp.hasCutouts = m_hasCutouts ? 1u : 0u;
     lp.lights = m_lightCount > 0 ? m_lights.as<const LightSource>() : nullptr;
     lp.lightCount = m_lightCount;
     lp.envTexture = m_envTexture;
