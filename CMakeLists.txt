@@ -64,6 +64,7 @@ add_custom_command(
 # --- Engine library (no window code, so it can run inside host apps and on render farms) --
 add_library(moa_core STATIC
     src/Renderer.cpp
+    src/DenoiserOptix.cpp
     src/Scene.cpp
     src/ImageIO.cpp
     src/MeshLoader.cpp

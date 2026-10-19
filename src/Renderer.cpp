@@ -85,11 +85,8 @@ Renderer::~Renderer()
         releaseTexture(entry.second);
     uploadEnvironment(nullptr);
     // Release GPU memory before tearing down OptiX objects.
-    m_denoiserState.release();
-    m_denoiserScratch.release();
+    m_denoiser.reset();  // before the OptiX context goes away
     m_denoised.release();
-    if (m_denoiser)
-        optixDenoiserDestroy(m_denoiser);
     if (m_pipeline)
         optixPipelineDestroy(m_pipeline);
     for (OptixProgramGroup pg : {m_raygenPG, m_missRadiancePG, m_missShadowPG, m_hitPG})
@@ -489,63 +486,22 @@ double Renderer::render(const RenderSettings& settings, const std::function<void
     return msSince(start);
 }
 
-void Renderer::setupDenoiser()
-{
-    if (m_denoiser && m_denoiserWidth == m_width && m_denoiserHeight == m_height)
-        return;
-
-    if (!m_denoiser)
-    {
-        OptixDenoiserOptions options = {};
-        options.guideAlbedo = 1;
-        options.guideNormal = 1;
-        options.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
-        OPTIX_CHECK(optixDenoiserCreate(m_context, OPTIX_DENOISER_MODEL_KIND_AOV, &options, &m_denoiser));
-    }
-
-    OptixDenoiserSizes sizes = {};
-    OPTIX_CHECK(optixDenoiserComputeMemoryResources(m_denoiser, m_width, m_height, &sizes));
-    m_denoiserState.resize(sizes.stateSizeInBytes);
-    m_denoiserScratch.resize(sizes.withoutOverlapScratchSizeInBytes);
-    OPTIX_CHECK(optixDenoiserSetup(m_denoiser, nullptr, m_width, m_height, m_denoiserState.dptr(),
-                                   m_denoiserState.size(), m_denoiserScratch.dptr(), m_denoiserScratch.size()));
-    m_denoiserWidth = m_width;
-    m_denoiserHeight = m_height;
-}
-
 double Renderer::denoise()
 {
     if (m_samplesRendered == 0)
         throw std::runtime_error("denoise() called before render()");
 
     const auto start = now();
-    setupDenoiser();
+    if (!m_denoiser)
+        m_denoiser = createOptixDenoiser(m_context);
 
-    auto image = [this](const CudaBuffer& buffer) {
-        OptixImage2D img = {};
-        img.data = buffer.dptr();
-        img.width = m_width;
-        img.height = m_height;
-        img.rowStrideInBytes = m_width * static_cast<unsigned int>(sizeof(float4));
-        img.pixelStrideInBytes = static_cast<unsigned int>(sizeof(float4));
-        img.format = OPTIX_PIXEL_FORMAT_FLOAT4;
-        return img;
-    };
-
-    OptixDenoiserGuideLayer guide = {};
-    guide.albedo = image(m_albedo);
-    guide.normal = image(m_normal);  // world-space normals, as the AOV model expects
-
-    OptixDenoiserLayer layer = {};
-    layer.input = image(m_beauty);
-    layer.output = image(m_denoised);
-    layer.type = OPTIX_DENOISER_AOV_TYPE_BEAUTY;
-
-    OptixDenoiserParams params = {};  // automatic exposure, no blending
-
-    OPTIX_CHECK(optixDenoiserInvoke(m_denoiser, nullptr, &params, m_denoiserState.dptr(), m_denoiserState.size(),
-                                    &guide, &layer, 1, 0, 0, m_denoiserScratch.dptr(), m_denoiserScratch.size()));
-    CUDA_CHECK(cudaDeviceSynchronize());
+    DenoiseInputs inputs;
+    inputs.beauty = m_beauty.as<const float4>();
+    inputs.albedo = m_albedo.as<const float4>();
+    inputs.normal = m_normal.as<const float4>();
+    inputs.width = m_width;
+    inputs.height = m_height;
+    m_denoiser->denoise(inputs, m_denoised.as<float4>());
     return msSince(start);
 }
 

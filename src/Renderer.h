@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CudaBuffer.h"
+#include "Denoiser.h"
 #include "Scene.h"
 #include "device/LaunchParams.h"
 
@@ -10,6 +11,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -76,9 +78,13 @@ public:
     unsigned int width() const { return m_width; }
     unsigned int height() const { return m_height; }
 
-    // Runs the OptiX AI denoiser on the current render, guided by the albedo and normal passes.
-    // Returns the denoise time in milliseconds.
+    // Denoises the current render (guided by the albedo and normal passes) with the current
+    // denoiser module, the OptiX AI denoiser unless setDenoiser() chose another. Returns the time
+    // in milliseconds.
     double denoise();
+    // Swaps in a different denoiser module (see Denoiser.h).
+    void setDenoiser(std::unique_ptr<Denoiser> denoiser) { m_denoiser = std::move(denoiser); }
+    const char* denoiserName() const { return m_denoiser ? m_denoiser->name() : "OptiX AI"; }
 
     unsigned int samplesRendered() const { return m_samplesRendered; }
 
@@ -98,7 +104,6 @@ private:
     void createShaderBindingTable();
     void buildAccel(const Scene& scene);
     void resizeFrame(unsigned int width, unsigned int height);
-    void setupDenoiser();
 
     std::string m_deviceName;
 
@@ -169,12 +174,8 @@ private:
     CudaBuffer m_launchParams;
     LaunchParams m_launch = {};
 
-    // Denoiser
-    OptixDenoiser m_denoiser = nullptr;
-    unsigned int m_denoiserWidth = 0;
-    unsigned int m_denoiserHeight = 0;
-    CudaBuffer m_denoiserState;
-    CudaBuffer m_denoiserScratch;
+    // Denoiser module (created on first use) and its output image
+    std::unique_ptr<Denoiser> m_denoiser;
     CudaBuffer m_denoised;
 };
 
