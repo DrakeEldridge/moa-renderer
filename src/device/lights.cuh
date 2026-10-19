@@ -64,6 +64,31 @@ __forceinline__ __device__ bool sampleLightSource(const LightSource& L, float3 p
         value = L.emission * (2.0f * kPi * (1.0f - cosMax));
         return dist > 0.0f;
     }
+    if (L.type == LIGHT_CYLINDER)
+    {
+        // A uniformly random point on the tube's side (the ends don't emit).
+        const float t = 2.0f * rnd(seed) - 1.0f;
+        const float phi = 2.0f * kPi * rnd(seed);
+        const float len = length(L.axisU);
+        if (len <= 0.0f)
+            return false;
+        const float3 axis = L.axisU / len;
+        const float3 e1 = L.axisV;
+        const float3 e2 = cross(axis, e1);
+        const float3 outward = e1 * cosf(phi) + e2 * sinf(phi);
+        const float3 q = L.position + L.axisU * t + outward * L.radius;
+        const float3 d = q - p;
+        const float dist2 = dot(d, d);
+        if (dist2 <= 1e-12f)
+            return false;
+        dist = sqrtf(dist2);
+        wi = d / dist;
+        const float cosLight = -dot(outward, wi);
+        if (cosLight <= 0.0f)
+            return false;  // that point faces away from us
+        value = L.emission * (cosLight * L.area / dist2);
+        return true;
+    }
     if (L.type == LIGHT_POINT)
     {
         const float3 d = L.position - p;

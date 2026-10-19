@@ -80,6 +80,8 @@ enum LightType : unsigned int
     LIGHT_POINT = 3,    // point: position; emission = radiant intensity (not radiance)
     LIGHT_DISTANT = 4,  // sun: normal = direction towards the light, emission = irradiance,
                         // cosAngle = cos(half the angular diameter)
+    LIGHT_CYLINDER = 5, // tube: position = centre, axisU = half the length along the axis,
+                        // axisV = a unit vector perpendicular to it, radius; emits from its side
 };
 
 struct LightSource
