@@ -3,6 +3,7 @@
 #include "Image.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
@@ -17,6 +18,8 @@
 #endif
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
+#define TINYEXR_IMPLEMENTATION
+#include "tinyexr/tinyexr.h"
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #elif defined(__GNUC__)
@@ -47,6 +50,33 @@ bool readBytes(const std::string& path, std::vector<unsigned char>& bytes, std::
     return true;
 }
 
+bool isExr(const std::vector<unsigned char>& bytes)
+{
+    return bytes.size() >= 4 && bytes[0] == 0x76 && bytes[1] == 0x2f && bytes[2] == 0x31 && bytes[3] == 0x01;
+}
+
+// OpenEXR -> linear float RGBA (grey images are copied into R, G and B).
+HdrImagePtr decodeExr(const std::vector<unsigned char>& bytes, const std::string& path, std::string& error)
+{
+    float* rgba = nullptr;
+    int w = 0, h = 0;
+    const char* err = nullptr;
+    if (LoadEXRFromMemory(&rgba, &w, &h, bytes.data(), bytes.size(), &err) != TINYEXR_SUCCESS)
+    {
+        error = std::string("Couldn't decode EXR image: ") + (err ? err : "unknown error");
+        if (err)
+            FreeEXRErrorMessage(err);
+        return nullptr;
+    }
+    auto image = std::make_shared<HdrImage>();
+    image->width = w;
+    image->height = h;
+    image->rgba.assign(rgba, rgba + static_cast<size_t>(w) * h * 4);
+    image->name = std::filesystem::u8path(path).filename().string();
+    std::free(rgba);
+    return image;
+}
+
 }  // namespace
 
 HdrImagePtr loadHdrImage(const std::string& path, std::string& error)
@@ -54,9 +84,11 @@ HdrImagePtr loadHdrImage(const std::string& path, std::string& error)
     std::vector<unsigned char> bytes;
     if (!readBytes(path, bytes, error))
         return nullptr;
+    if (isExr(bytes))
+        return decodeExr(bytes, path, error);
     if (!stbi_is_hdr_from_memory(bytes.data(), static_cast<int>(bytes.size())))
     {
-        error = "Not a Radiance .hdr file (EXR isn't supported yet; download the HDR version)";
+        error = "Not an HDR image (MOA reads .hdr and .exr)";
         return nullptr;
     }
     int w = 0, h = 0, channels = 0;
@@ -92,6 +124,36 @@ ImagePtr loadImage(const std::string& path, std::string& error)
     image->width = w;
     image->height = h;
     image->rgba.assign(pixels, pixels + static_cast<size_t>(w) * h * 4);
+    image->name = std::filesystem::u8path(path).filename().string();
+    stbi_image_free(pixels);
+    return image;
+}
+
+HdrImagePtr loadFloatImage(const std::string& path, std::string& error)
+{
+    std::vector<unsigned char> bytes;
+    if (!readBytes(path, bytes, error))
+        return nullptr;
+    if (isExr(bytes))
+        return decodeExr(bytes, path, error);
+    if (stbi_is_hdr_from_memory(bytes.data(), static_cast<int>(bytes.size())))
+        return loadHdrImage(path, error);
+    // 8- or 16-bit image: read as 16-bit and keep the values linear (data, not colour).
+    int w = 0, h = 0, channels = 0;
+    unsigned short* pixels =
+        stbi_load_16_from_memory(bytes.data(), static_cast<int>(bytes.size()), &w, &h, &channels, 4);
+    if (!pixels)
+    {
+        error = std::string("Couldn't decode image: ") + stbi_failure_reason();
+        return nullptr;
+    }
+    auto image = std::make_shared<HdrImage>();
+    image->width = w;
+    image->height = h;
+    const size_t count = static_cast<size_t>(w) * h * 4;
+    image->rgba.resize(count);
+    for (size_t i = 0; i < count; ++i)
+        image->rgba[i] = pixels[i] / 65535.0f;
     image->name = std::filesystem::u8path(path).filename().string();
     stbi_image_free(pixels);
     return image;

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 
-project(MOARenderer VERSION 0.1.0 LANGUAGES CXX CUDA)
+project(MOARenderer VERSION 0.1.0 LANGUAGES C CXX CUDA)
 
 # The live window (moa.exe) needs GLFW and Dear ImGui. Host plugins (Houdini etc.) only need
 # the engine library, so they switch the viewer off when they add this project.
@@ -69,9 +69,11 @@ add_library(moa_core STATIC
     src/ImageIO.cpp
     src/MeshLoader.cpp
     src/Image.cpp
+    src/Displacement.cpp
+    third_party/tinyexr/miniz.c
     "${MOA_EMBEDDED_PTX}")
 add_library(moa::core ALIAS moa_core)
-target_include_directories(moa_core PUBLIC "${OPTIX_INCLUDE_DIR}" src PRIVATE third_party)
+target_include_directories(moa_core PUBLIC "${OPTIX_INCLUDE_DIR}" src PRIVATE third_party third_party/tinyexr)
 # Static CUDA runtime: plugins then don't need to ship cudart DLLs next to them.
 target_link_libraries(moa_core PUBLIC CUDA::cudart_static)
 set_target_properties(moa_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -82,9 +84,9 @@ else()
     target_link_libraries(moa_core PUBLIC ${CMAKE_DL_LIBS})
 endif()
 if(MSVC)
-    target_compile_options(moa_core PRIVATE /W4 /utf-8)
+    target_compile_options(moa_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /utf-8>)
 else()
-    target_compile_options(moa_core PRIVATE -Wall -Wextra)
+    target_compile_options(moa_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>)
 endif()
 
 if(NOT MOA_BUILD_VIEWER)

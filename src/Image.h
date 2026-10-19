@@ -1,4 +1,5 @@
-// MOA Renderer - loading texture images (JPG, PNG, TGA, BMP...) into 8-bit RGBA.
+// MOA Renderer - loading images: textures (JPG, PNG, TGA, BMP...) as 8-bit RGBA, HDRIs and data
+// maps (HDR, EXR) as float RGBA.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
@@ -30,8 +31,12 @@ struct HdrImage
 
 using HdrImagePtr = std::shared_ptr<const HdrImage>;
 
-// Loads a Radiance .hdr file. Returns nullptr and sets `error` on failure.
+// Loads a Radiance .hdr or OpenEXR file. Returns nullptr and sets `error` on failure.
 HdrImagePtr loadHdrImage(const std::string& path, std::string& error);
+
+// Loads any supported image as linear floats without colour conversion: EXR/HDR as stored,
+// 8/16-bit images as value / max. For data maps such as displacement.
+HdrImagePtr loadFloatImage(const std::string& path, std::string& error);
 
 // Loads an image file. Returns nullptr and sets `error` on failure.
 ImagePtr loadImage(const std::string& path, std::string& error);
