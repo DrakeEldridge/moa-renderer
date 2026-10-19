@@ -41,6 +41,12 @@ HdrImagePtr loadFloatImage(const std::string& path, std::string& error);
 // Loads an image file. Returns nullptr and sets `error` on failure.
 ImagePtr loadImage(const std::string& path, std::string& error);
 
+// The same, from a file already in memory (e.g. a texture inside a .usdz package). `name` is the
+// path shown in messages.
+HdrImagePtr decodeHdrImage(const std::vector<unsigned char>& bytes, const std::string& name, std::string& error);
+ImagePtr decodeImage(const std::vector<unsigned char>& bytes, const std::string& name, std::string& error);
+HdrImagePtr decodeFloatImage(const std::vector<unsigned char>& bytes, const std::string& name, std::string& error);
+
 // True if the image looks like a tangent-space normal map (mostly light blue/purple:
 // blue channel high, red and green around the middle).
 bool looksLikeNormalMap(const Image& image);

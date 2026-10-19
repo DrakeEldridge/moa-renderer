@@ -50,6 +50,16 @@ bool readBytes(const std::string& path, std::vector<unsigned char>& bytes, std::
     return true;
 }
 
+// "C:/x/model.usdz[0/tex.jpg]" -> "tex.jpg"; "C:/x/tex.jpg" -> "tex.jpg".
+std::string displayName(const std::string& path)
+{
+    std::string p = path;
+    if (!p.empty() && p.back() == ']')
+        p.pop_back();
+    const size_t cut = p.find_last_of("/\\[");
+    return cut == std::string::npos ? p : p.substr(cut + 1);
+}
+
 bool isExr(const std::vector<unsigned char>& bytes)
 {
     return bytes.size() >= 4 && bytes[0] == 0x76 && bytes[1] == 0x2f && bytes[2] == 0x31 && bytes[3] == 0x01;
@@ -72,18 +82,15 @@ HdrImagePtr decodeExr(const std::vector<unsigned char>& bytes, const std::string
     image->width = w;
     image->height = h;
     image->rgba.assign(rgba, rgba + static_cast<size_t>(w) * h * 4);
-    image->name = std::filesystem::u8path(path).filename().string();
+    image->name = displayName(path);
     std::free(rgba);
     return image;
 }
 
 }  // namespace
 
-HdrImagePtr loadHdrImage(const std::string& path, std::string& error)
+HdrImagePtr decodeHdrImage(const std::vector<unsigned char>& bytes, const std::string& path, std::string& error)
 {
-    std::vector<unsigned char> bytes;
-    if (!readBytes(path, bytes, error))
-        return nullptr;
     if (isExr(bytes))
         return decodeExr(bytes, path, error);
     if (!stbi_is_hdr_from_memory(bytes.data(), static_cast<int>(bytes.size())))
@@ -102,17 +109,13 @@ HdrImagePtr loadHdrImage(const std::string& path, std::string& error)
     image->width = w;
     image->height = h;
     image->rgba.assign(pixels, pixels + static_cast<size_t>(w) * h * 4);
-    image->name = std::filesystem::u8path(path).filename().string();
+    image->name = displayName(path);
     stbi_image_free(pixels);
     return image;
 }
 
-ImagePtr loadImage(const std::string& path, std::string& error)
+ImagePtr decodeImage(const std::vector<unsigned char>& bytes, const std::string& path, std::string& error)
 {
-    std::vector<unsigned char> bytes;
-    if (!readBytes(path, bytes, error))
-        return nullptr;
-
     int w = 0, h = 0, channels = 0;
     unsigned char* pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()), &w, &h, &channels, 4);
     if (!pixels)
@@ -124,20 +127,17 @@ ImagePtr loadImage(const std::string& path, std::string& error)
     image->width = w;
     image->height = h;
     image->rgba.assign(pixels, pixels + static_cast<size_t>(w) * h * 4);
-    image->name = std::filesystem::u8path(path).filename().string();
+    image->name = displayName(path);
     stbi_image_free(pixels);
     return image;
 }
 
-HdrImagePtr loadFloatImage(const std::string& path, std::string& error)
+HdrImagePtr decodeFloatImage(const std::vector<unsigned char>& bytes, const std::string& path, std::string& error)
 {
-    std::vector<unsigned char> bytes;
-    if (!readBytes(path, bytes, error))
-        return nullptr;
     if (isExr(bytes))
         return decodeExr(bytes, path, error);
     if (stbi_is_hdr_from_memory(bytes.data(), static_cast<int>(bytes.size())))
-        return loadHdrImage(path, error);
+        return decodeHdrImage(bytes, path, error);
     // 8- or 16-bit image: read as 16-bit and keep the values linear (data, not colour).
     int w = 0, h = 0, channels = 0;
     unsigned short* pixels =
@@ -154,9 +154,27 @@ HdrImagePtr loadFloatImage(const std::string& path, std::string& error)
     image->rgba.resize(count);
     for (size_t i = 0; i < count; ++i)
         image->rgba[i] = pixels[i] / 65535.0f;
-    image->name = std::filesystem::u8path(path).filename().string();
+    image->name = displayName(path);
     stbi_image_free(pixels);
     return image;
+}
+
+HdrImagePtr loadHdrImage(const std::string& path, std::string& error)
+{
+    std::vector<unsigned char> bytes;
+    return readBytes(path, bytes, error) ? decodeHdrImage(bytes, path, error) : nullptr;
+}
+
+ImagePtr loadImage(const std::string& path, std::string& error)
+{
+    std::vector<unsigned char> bytes;
+    return readBytes(path, bytes, error) ? decodeImage(bytes, path, error) : nullptr;
+}
+
+HdrImagePtr loadFloatImage(const std::string& path, std::string& error)
+{
+    std::vector<unsigned char> bytes;
+    return readBytes(path, bytes, error) ? decodeFloatImage(bytes, path, error) : nullptr;
 }
 
 bool looksLikeNormalMap(const Image& image)
