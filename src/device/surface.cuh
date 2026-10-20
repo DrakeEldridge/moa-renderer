@@ -36,6 +36,27 @@ __forceinline__ __device__ bool passesThrough(const HitInfo& hit, unsigned int& 
     return rnd(seed) >= opacity;
 }
 
+// Shadow rays: like passesThrough, and thin glass sheets (a visor, a window) let a random share
+// through, as much as they transmit. (The shadow isn't tinted by the glass colour yet.)
+__forceinline__ __device__ bool shadowPassesThrough(const HitInfo& hit, float3 direction, unsigned int& seed)
+{
+    if (passesThrough(hit, seed))
+        return true;
+    const Material& m = params.materials[hit.materialId];
+    if (!(m.flags & MATFLAG_THIN_WALLED) || m.type != MAT_STANDARD || m.transmission <= 0.5f)
+        return false;
+    float3 tint = m.albedo;
+    if (m.colorTexture >= 0)
+    {
+        const float4 c = sampleTexture(m.colorTexture, hit.uv, m.flags);
+        tint = tint * make_float3(c.x, c.y, c.z);
+    }
+    const float cosI = fabsf(dot(direction, hit.normal));
+    const float r = fresnelDielectric(cosI, 1.0f / fmaxf(m.ior, 1.0001f));
+    const float reflect = r < 1.0f ? 2.0f * r / (1.0f + r) : 1.0f;
+    return rnd(seed) < (1.0f - reflect) * clampf(luminance(tint), 0.0f, 1.0f);
+}
+
 // Traces a camera / bounce ray, stepping through holes and see-through parts.
 __forceinline__ __device__ void traceThroughCutouts(float3 origin, float3 direction, HitInfo& hit, unsigned int& seed)
 {
@@ -64,7 +85,7 @@ __forceinline__ __device__ bool visibleThroughCutouts(float3 origin, float3 dire
         traceRadiance(origin, direction, h, distance);
         if (!h.hit)
             return true;
-        if (!passesThrough(h, seed))
+        if (!shadowPassesThrough(h, direction, seed))
             return false;
         const float travelled = length(h.position - origin);
         const float3 facing = dot(direction, h.normal) < 0.0f ? h.normal : -h.normal;

@@ -42,6 +42,12 @@ struct Scene
     bool hasQuadLight = true;
     std::vector<LightSource> lights;  // extra lights: more rects, disks, spheres, points, suns
 
+    // Names for Cryptomatte (optional): triangleObject[t] indexes objectNames; materialNames runs
+    // parallel to materials. Empty = no object / material IDs.
+    std::vector<unsigned int> triangleObject;
+    std::vector<std::string> objectNames;
+    std::vector<std::string> materialNames;
+
     // Environment light (HDRI). No image = no environment.
     HdrImagePtr environment;
     float environmentIntensity = 1.0f;

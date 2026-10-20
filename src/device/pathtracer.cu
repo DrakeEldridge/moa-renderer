@@ -56,6 +56,34 @@ __forceinline__ __device__ bool isEmissive(const Material& m)
     return m.emission.x > 0.0f || m.emission.y > 0.0f || m.emission.z > 0.0f;
 }
 
+// Cryptomatte: counts how many samples of this pixel saw each ID (up to kCryptoSlots IDs; rarer
+// ones beyond that are dropped). The host turns counts into coverage and sorts them.
+__forceinline__ __device__ void cryptoAdd(float* slots, float id)
+{
+    for (unsigned int k = 0; k < kCryptoSlots; ++k)
+    {
+        float& sid = slots[2 * k];
+        float& count = slots[2 * k + 1];
+        if (count > 0.0f && sid == id)  // IDs are never NaN (Cryptomatte avoids those bit patterns)
+        {
+            count += 1.0f;
+            return;
+        }
+        if (count == 0.0f)
+        {
+            sid = id;
+            count = 1.0f;
+            return;
+        }
+    }
+}
+
+// Slab reflectance of a thin sheet (two faces, light bouncing between them), from one face's R.
+__forceinline__ __device__ float thinSheetReflectance(float r)
+{
+    return r < 1.0f ? 2.0f * r / (1.0f + r) : 1.0f;
+}
+
 }  // namespace
 
 extern "C" __global__ void __raygen__render()
@@ -72,6 +100,17 @@ extern "C" __global__ void __raygen__render()
     float3 sumNormal = make_float3(0.0f, 0.0f, 0.0f);
     float firstDepth = 0.0f;  // depth pass: 0 = the camera ray hit nothing
 
+    float* cryptoObj = params.cryptoObject ? params.cryptoObject + size_t(pixel) * 2 * kCryptoSlots : nullptr;
+    float* cryptoMat = params.cryptoMaterial ? params.cryptoMaterial + size_t(pixel) * 2 * kCryptoSlots : nullptr;
+    if (params.subframeIndex == 0)
+        for (unsigned int k = 0; k < 2 * kCryptoSlots; ++k)
+        {
+            if (cryptoObj)
+                cryptoObj[k] = 0.0f;
+            if (cryptoMat)
+                cryptoMat[k] = 0.0f;
+        }
+
     for (unsigned int s = 0; s < params.samplesPerLaunch; ++s)
     {
         float3 origin, direction;
@@ -85,12 +124,28 @@ extern "C" __global__ void __raygen__render()
         bool afterDiffuse = false;  // has the path bounced off a diffuse surface yet?
         float lastBsdfPdf = 0.0f;   // pdf of the last diffuse bounce direction (for MIS with the HDRI)
         bool lastWasDiffuse = false;
+        bool lastWasSharp = true;   // camera ray or a mirror-sharp bounce (sees sun discs)
 
         for (unsigned int depth = 0; depth < params.maxDepth; ++depth)
         {
             HitInfo hit;
             hit.hit = 0u;
             traceThroughCutouts(origin, direction, hit, seed);
+
+            // The shape of an extra light in front of whatever the ray hit (or the sky)? Only rays
+            // that can see emitters directly count: the camera and mirror/glass bounces.
+            if (countEmission && params.lightCount > 0)
+            {
+                float3 le;
+                const float tGeom = hit.hit ? length(hit.position - origin) : kRayTMax;
+                if (hitVisibleLight(origin, direction, tGeom, depth == 0, lastWasSharp, le))
+                {
+                    const float3 e = throughput * le;
+                    radiance += afterDiffuse ? clampCaustic(e) : e;
+                    break;
+                }
+            }
+
             if (!hit.hit)
             {
                 if (params.envWidth > 0)
@@ -137,6 +192,10 @@ extern "C" __global__ void __raygen__render()
                 normalAov = n;
                 if (s == 0)
                     firstDepth = dot(hit.position - cam.eye, normalize(cam.w));
+                if (cryptoObj && params.objectCryptoId)
+                    cryptoAdd(cryptoObj, params.objectCryptoId[hit.objectId]);
+                if (cryptoMat && params.materialCryptoId)
+                    cryptoAdd(cryptoMat, params.materialCryptoId[hit.materialId]);
             }
 
             if (isEmissive(m))
@@ -252,6 +311,7 @@ extern "C" __global__ void __raygen__render()
                 afterDiffuse = true;
                 lastWasDiffuse = true;
                 lastBsdfPdf = fmaxf(dot(n, direction), 0.0f) * kInvPi;
+                lastWasSharp = false;
                 if (dot(ng, direction) <= 0.0f)
                     break;  // bent (normal-mapped) normal sent the bounce into the surface
             }
@@ -266,6 +326,7 @@ extern "C" __global__ void __raygen__render()
                 direction = frame.toWorld(wiLocal);
                 origin = outside;
                 throughput *= weight;
+                lastWasSharp = delta;
                 if (delta)
                     countEmission = true;  // mirror-sharp reflection: lights are seen directly
                 else
@@ -283,6 +344,38 @@ extern "C" __global__ void __raygen__render()
                 direction = reflect(direction, n);
                 origin = outside;
                 throughput *= albedo;
+                countEmission = true;
+                lastWasSharp = true;
+            }
+            else if (standardGlass && (m.flags & MATFLAG_THIN_WALLED))
+            {
+                // Thin sheet (visor, window): reflect off the two faces, or pass straight through
+                // without bending. Rough sheets blur the reflection; what passes through stays sharp.
+                const float rough = clampf(m.roughness, 0.0f, 1.0f);
+                float3 mirrorNormal = n;
+                float cosI = fmaxf(-dot(direction, n), 1e-6f);
+                if (rough >= 0.02f)
+                {
+                    const float alpha = fmaxf(rough * rough, 1e-4f);
+                    const float3 h = sampleGgxVisibleNormal(woLocal, alpha, rnd(seed), rnd(seed));
+                    mirrorNormal = frame.toWorld(h);
+                    cosI = fmaxf(dot(woLocal, h), 1e-6f);
+                }
+                const float reflectance = thinSheetReflectance(fresnelDielectric(cosI, 1.0f / fmaxf(m.ior, 1.0001f)));
+                if (rnd(seed) < reflectance)
+                {
+                    direction = reflect(direction, mirrorNormal);
+                    if (dot(direction, ng) <= 0.0f)
+                        break;
+                    origin = outside;
+                    lastWasSharp = rough < 0.02f;
+                }
+                else
+                {
+                    origin = hit.position - ng * kRayEpsilon;  // same direction, other side
+                    throughput *= albedo;
+                    // keeps lastWasSharp: a straight pass doesn't blur anything
+                }
                 countEmission = true;
             }
             else if (standardGlass && m.roughness >= 0.02f)
@@ -303,6 +396,7 @@ extern "C" __global__ void __raygen__render()
                 origin = reflected ? outside : hit.position - ng * kRayEpsilon;
                 throughput *= albedo * g1;
                 countEmission = true;
+                lastWasSharp = false;
             }
             else  // MAT_GLASS, or smooth standard glass
             {
@@ -321,6 +415,7 @@ extern "C" __global__ void __raygen__render()
                 }
                 throughput *= albedo;
                 countEmission = true;
+                lastWasSharp = true;
             }
 
             // Russian roulette: randomly end weak paths, boosting the survivors to stay unbiased.
@@ -423,6 +518,7 @@ extern "C" __global__ void __closesthit__radiance()
     hit->tangent = make_float4(g0.x * b0 + g1.x * bary.x + g2.x * bary.y, g0.y * b0 + g1.y * bary.x + g2.y * bary.y,
                                g0.z * b0 + g1.z * bary.x + g2.z * bary.y, g0.w);
     hit->materialId = params.triangleMaterial[prim];
+    hit->objectId = params.triangleObject ? params.triangleObject[prim] : 0u;
     hit->hit = 1u;
 }
 

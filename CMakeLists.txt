@@ -70,6 +70,7 @@ add_library(moa_core STATIC
     src/MeshLoader.cpp
     src/Image.cpp
     src/Displacement.cpp
+    src/Cryptomatte.cpp
     third_party/tinyexr/miniz.c
     "${MOA_EMBEDDED_PTX}")
 add_library(moa::core ALIAS moa_core)

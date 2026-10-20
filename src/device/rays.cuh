@@ -19,6 +19,7 @@ struct HitInfo
     float4 tangent;        // interpolated tangent (xyz) and bitangent sign (w)
     float2 uv;
     unsigned int materialId;
+    unsigned int objectId;  // which object (Cryptomatte); 0 when the scene doesn't say
     unsigned int hit;
 };
 

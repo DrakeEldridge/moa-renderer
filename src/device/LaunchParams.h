@@ -29,6 +29,8 @@ enum MaterialFlags : unsigned int
 {
     MATFLAG_FLIP_V = 1u << 0,           // texture V runs top-down instead of OBJ's bottom-up
     MATFLAG_FLIP_NORMAL_GREEN = 1u << 1,  // normal map uses the DirectX green convention
+    MATFLAG_THIN_WALLED = 1u << 2,      // glass is a thin sheet (visor, window, bubble): light passes
+                                        // straight through without bending; reflections on both faces
 };
 
 struct Material
@@ -75,8 +77,8 @@ struct QuadLight
     float area;
 };
 
-// Extra lights (any number), sampled one at a time for direct lighting. They are not visible to
-// camera rays or mirror reflections (only their light is).
+// Extra lights (any number), sampled one at a time for direct lighting. Their shapes show up in
+// mirrors, glass and sharp reflections (LIGHTFLAG_VISIBLE_REFLECT) and, optionally, to the camera.
 enum LightType : unsigned int
 {
     LIGHT_QUAD = 0,     // rectangle: position = corner, axisU / axisV = edges
@@ -89,9 +91,17 @@ enum LightType : unsigned int
                         // axisV = a unit vector perpendicular to it, radius; emits from its side
 };
 
+enum LightFlags : unsigned int
+{
+    LIGHTFLAG_VISIBLE_CAMERA = 1u << 0,   // the camera sees the light's shape
+    LIGHTFLAG_VISIBLE_REFLECT = 1u << 1,  // mirrors, glass and sharp reflections see it
+    LIGHTFLAG_SPOT = 1u << 2,             // cone shaping (spot light): see spotAxis etc.
+};
+
 struct LightSource
 {
     unsigned int type;  // LightType
+    unsigned int flags; // LightFlags (0 = lights the scene only, no cone)
     float3 position;
     float3 axisU;
     float3 axisV;
@@ -100,7 +110,16 @@ struct LightSource
     float radius;       // sphere
     float area;         // quad, disk
     float cosAngle;     // distant
+    // Spot cone (LIGHTFLAG_SPOT): light leaving at angle a from spotAxis is scaled by
+    // smoothstep(spotCosOuter, spotCosInner, cos a) * cos(a)^spotFocus.
+    float3 spotAxis;
+    float spotCosOuter;
+    float spotCosInner;
+    float spotFocus;
 };
+
+// Cryptomatte: per pixel, kCryptoSlots (id, sample count) pairs for objects and for materials.
+constexpr unsigned int kCryptoSlots = 6;
 
 struct LaunchParams
 {
@@ -119,6 +138,12 @@ struct LaunchParams
     // Distance from the camera plane (along the view direction) to the first surface the centre
     // ray of each pixel hits, written on the first launch only; 0 = nothing hit. May be null.
     float* depth;
+    // Cryptomatte accumulation (may be null): kCryptoSlots x (id, count) floats per pixel.
+    float* cryptoObject;
+    float* cryptoMaterial;
+    const float* objectCryptoId;    // per object: Cryptomatte ID (hashed name as a float)
+    const float* materialCryptoId;  // per material
+    const unsigned int* triangleObject;  // object index per triangle (may be null)
 
     Camera camera;
     QuadLight light;

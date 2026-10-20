@@ -28,6 +28,7 @@ struct RenderSettings
     float maxSampleValue = 4.0f;  // caustic firefly clamp; 0 disables it
     float background = 0.0f;      // uniform background light (rays leaving the scene)
     float backgroundColor[3] = {1.0f, 1.0f, 1.0f};  // colour of that light (multiplied by background)
+    bool cryptomatte = false;     // collect Cryptomatte IDs (needs the scene's object/material names)
 };
 
 class Renderer
@@ -96,6 +97,10 @@ public:
     // first renderPass() following beginProgressive().
     void downloadDepth(std::vector<float>& out) const { m_depth.download(out); }
 
+    // Writes the Cryptomatte EXR (object and/or material layers, see Cryptomatte.h) for the current
+    // render. Needs RenderSettings::cryptomatte. Returns false with a reason on failure.
+    bool saveCryptomatte(const std::string& path, bool objects, bool materials, std::string& error) const;
+
 private:
     void createContext(bool verbose);
     void createModule(const std::string& ptxPath);
@@ -131,6 +136,13 @@ private:
     CudaBuffer m_materials;
     CudaBuffer m_lights;
     unsigned int m_lightCount = 0;
+    // Cryptomatte: IDs per object / material, object per triangle, and the names behind them.
+    CudaBuffer m_triangleObject;
+    CudaBuffer m_objectCryptoIds;
+    CudaBuffer m_materialCryptoIds;
+    std::vector<std::string> m_objectNames;
+    std::vector<std::string> m_materialNames;
+    bool m_hasObjectIds = false;
     CudaBuffer m_gas;
 
     // GPU textures, cached by image so rebuilding the scene doesn't re-upload them.
@@ -174,6 +186,9 @@ private:
     CudaBuffer m_albedo;
     CudaBuffer m_normal;
     CudaBuffer m_depth;
+    CudaBuffer m_cryptoObject;    // kCryptoSlots x (id, count) per pixel, when enabled
+    CudaBuffer m_cryptoMaterial;
+    bool m_cryptoEnabled = false;
     CudaBuffer m_launchParams;
     LaunchParams m_launch = {};
 

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "Renderer.h"
 
+#include "Cryptomatte.h"
+
 #include "EmbeddedPtx.h"
 
 #include "device/vec_math.h"
@@ -26,8 +28,9 @@ namespace {
 bool hasCutouts(const std::vector<Material>& materials)
 {
     for (const Material& m : materials)
-        if (m.transparency > 0.0f || m.opacityTexture >= 0)
-            return true;
+        if (m.transparency > 0.0f || m.opacityTexture >= 0 ||
+            ((m.flags & MATFLAG_THIN_WALLED) && m.type == MAT_STANDARD && m.transmission > 0.5f))
+            return true;  // (thin glass lets shadow rays through, which uses the same stepping)
     return false;
 }
 
@@ -261,7 +264,54 @@ void Renderer::setScene(const Scene& scene)
     m_lightCount = static_cast<unsigned int>(scene.lights.size());
     if (m_lightCount > 0)
         m_lights.upload(scene.lights);
+
+    // Cryptomatte IDs: hashed names (object 0 / unnamed materials get an ID too, from "").
+    m_objectNames = scene.objectNames;
+    m_materialNames = scene.materialNames;
+    m_materialNames.resize(scene.materials.size());
+    m_hasObjectIds = scene.triangleObject.size() == scene.triangleCount() && !scene.objectNames.empty();
+    std::vector<float> objectIds, materialIds;
+    for (const std::string& n : m_materialNames)
+        materialIds.push_back(n.empty() ? 0.0f : cryptomatteId(n));
+    m_materialCryptoIds.upload(materialIds);
+    if (m_hasObjectIds)
+    {
+        std::vector<unsigned int> tri = scene.triangleObject;
+        for (unsigned int& t : tri)
+            t = std::min<unsigned int>(t, static_cast<unsigned int>(m_objectNames.size() - 1));
+        for (const std::string& n : m_objectNames)
+            objectIds.push_back(n.empty() ? 0.0f : cryptomatteId(n));
+        m_objectCryptoIds.upload(objectIds);
+        m_triangleObject.upload(tri);
+    }
     buildAccel(scene);
+}
+
+bool Renderer::saveCryptomatte(const std::string& path, bool objects, bool materials, std::string& error) const
+{
+    if (!m_cryptoEnabled || m_width == 0)
+    {
+        error = "Cryptomatte wasn't collected for this render";
+        return false;
+    }
+    std::vector<float> objectSlots, materialSlots;
+    std::vector<CryptomatteLayer> layers;
+    if (objects && m_hasObjectIds)
+    {
+        m_cryptoObject.download(objectSlots);
+        layers.push_back({"CryptoObject", &objectSlots, m_objectNames});
+    }
+    if (materials)
+    {
+        m_cryptoMaterial.download(materialSlots);
+        layers.push_back({"CryptoMaterial", &materialSlots, m_materialNames});
+    }
+    if (layers.empty())
+    {
+        error = "no object names in this scene";
+        return false;
+    }
+    return writeCryptomatteExr(path, m_width, m_height, m_samplesRendered, layers, true, error);
 }
 
 void Renderer::updateMaterials(const Scene& scene)
@@ -419,6 +469,9 @@ void Renderer::resizeFrame(unsigned int width, unsigned int height)
     m_normal.resize(bytes);
     m_denoised.resize(bytes);
     m_depth.resize(static_cast<size_t>(width) * height * sizeof(float));
+    m_cryptoEnabled = false;  // re-allocated by beginProgressive() when wanted
+    m_cryptoObject.resize(0);
+    m_cryptoMaterial.resize(0);
 }
 
 void Renderer::beginProgressive(const RenderSettings& settings)
@@ -445,6 +498,20 @@ void Renderer::beginProgressive(const RenderSettings& settings)
     lp.albedo = m_albedo.as<float4>();
     lp.normal = m_normal.as<float4>();
     lp.depth = m_depth.as<float>();
+    if (settings.cryptomatte)
+    {
+        const size_t bytes = static_cast<size_t>(settings.width) * settings.height * 2 * kCryptoSlots * sizeof(float);
+        m_cryptoMaterial.resize(bytes);  // (no-op when the size is unchanged)
+        m_cryptoObject.resize(m_hasObjectIds ? bytes : 0);
+        m_cryptoEnabled = true;
+        lp.cryptoMaterial = m_cryptoMaterial.as<float>();
+        lp.cryptoObject = m_hasObjectIds ? m_cryptoObject.as<float>() : nullptr;
+        lp.materialCryptoId = m_materialCryptoIds.as<const float>();
+        lp.objectCryptoId = m_hasObjectIds ? m_objectCryptoIds.as<const float>() : nullptr;
+    }
+    else
+        m_cryptoEnabled = false;
+    lp.triangleObject = m_hasObjectIds ? m_triangleObject.as<const unsigned int>() : nullptr;
     lp.camera = m_camera;
     lp.light = m_light;
     lp.hasQuadLight = m_hasQuadLight ? 1u : 0u;
